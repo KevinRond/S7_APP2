@@ -66,20 +66,44 @@ def exercice_2_decorrelation():
 
     # L1.E2.5 Projetez la représentation des données sur la première composante principale
     # -------------------------------------------------------------------------
-    first_principal_component = numpy.zeros((3, 1))                                             # Sélectionnez la première composante principale
+    idx_max = numpy.argmax(eigenvalues)
+    print(f'idx_max {idx_max}')
+    first_principal_component = eigenvectors[:, idx_max].reshape(3, 1)
+    print(f'eigenvectors[:, idx_max] {eigenvectors[:, idx_max]}')
+    print(f'first component {first_principal_component}')
     decorrelated_samples = analysis.project_onto_new_basis(samples, first_principal_component)  # Complétez la fonction project_onto_new_basis dans analysis.py
 
     representation = dataset.Representation(data=decorrelated_samples, labels=numpy.array(["Data"] * decorrelated_samples.shape[0]))
-    viz.plot_pdf(representation, n_bins=10, title="Projection des données sur la 1er composante")
+    # viz.plot_pdf(representation, n_bins=10, title="Projection des données sur la 1er composante")
+
+    plt.figure()
+    histogram, bin_edges = numpy.histogram(decorrelated_samples, bins=30, density=True)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    plt.bar(bin_centers, histogram, width=bin_edges[1] - bin_edges[0], alpha=0.6, color='g', label='Données projetées')
+    plt.title("Projection des données sur la 1ère composante principale")
+    plt.xlabel("Valeur projetée")
+    plt.ylabel("Densité de probabilité")
+    plt.legend()
     # -------------------------------------------------------------------------
 
     # L1.E2.6 Projetez la représentation des données sur les 2e et 3e composantes principales
     # -------------------------------------------------------------------------
-    e23 = numpy.zeros((3, 2))                                       # Sélectionnez la 2e et 3e composante principale
+    # 1. Obtenir les indices triés des valeurs propres (décroissant)
+# Si eigenvalues = [3, 1, 7], alors sorted_indices = [2, 0, 1]
+    sorted_indices = numpy.argsort(eigenvalues)[::-1]
+
+    # 2. Sélectionner les indices pour la 2e et la 3e composante
+    # sorted_indices[0] est la 1ère (Z)
+    # sorted_indices[1] est la 2e (X+Y)
+    # sorted_indices[2] est la 3e (X-Y)
+    idx_2 = sorted_indices[1]
+    idx_3 = sorted_indices[2]
+    e23 = eigenvectors[:, [idx_2, idx_3]]                                      # Sélectionnez la 2e et 3e composante principale
+    print(f'eigenvectors[:, [idx_2, idx_3]]  {eigenvectors[:, [idx_2, idx_3]] }')
     reduced_samples = analysis.project_onto_new_basis(samples, e23) # Projetez les données sur les 2e et 3e composantes principales
 
-    projected_covariance = numpy.zeros((2,2))                                           # Utilisez la fonction appropriée pour calculer la matrice de covariance des données projetées
-    projected_eigenvalues, projected_eigenvectors = numpy.zeros(2), numpy.zeros((2,2))  # Utilisez la fonction appropriée pour calculer les valeurs propres et vecteurs propres des données projetées
+    projected_covariance = numpy.cov(reduced_samples, rowvar=False)                                           # Utilisez la fonction appropriée pour calculer la matrice de covariance des données projetées
+    projected_eigenvalues, projected_eigenvectors = numpy.linalg.eig(projected_covariance)  # Utilisez la fonction appropriée pour calculer les valeurs propres et vecteurs propres des données projetées
 
     print("Exercice 2.6: Calcul de la matrice de covariance, vecteurs et valeurs propres projetées")
     viz.print_gaussian_model(mean[1:3], projected_covariance, projected_eigenvalues, projected_eigenvectors)
