@@ -36,6 +36,9 @@ def exercice_1_generation():
 
     plt.show()
 
+### 
+# Est-ce qu'on a enlevé la 3e dimension parce qu'elle n'etait pas covarié ou parce que sa valeur propre était la plus grande?
+###
 def exercice_2_decorrelation():
     mean = [0, 0, 0]
     covariance = numpy.array([
@@ -67,10 +70,7 @@ def exercice_2_decorrelation():
     # L1.E2.5 Projetez la représentation des données sur la première composante principale
     # -------------------------------------------------------------------------
     idx_max = numpy.argmax(eigenvalues)
-    print(f'idx_max {idx_max}')
     first_principal_component = eigenvectors[:, idx_max].reshape(3, 1)
-    print(f'eigenvectors[:, idx_max] {eigenvectors[:, idx_max]}')
-    print(f'first component {first_principal_component}')
     decorrelated_samples = analysis.project_onto_new_basis(samples, first_principal_component)  # Complétez la fonction project_onto_new_basis dans analysis.py
 
     representation = dataset.Representation(data=decorrelated_samples, labels=numpy.array(["Data"] * decorrelated_samples.shape[0]))
@@ -89,17 +89,11 @@ def exercice_2_decorrelation():
     # L1.E2.6 Projetez la représentation des données sur les 2e et 3e composantes principales
     # -------------------------------------------------------------------------
     # 1. Obtenir les indices triés des valeurs propres (décroissant)
-# Si eigenvalues = [3, 1, 7], alors sorted_indices = [2, 0, 1]
     sorted_indices = numpy.argsort(eigenvalues)[::-1]
 
-    # 2. Sélectionner les indices pour la 2e et la 3e composante
-    # sorted_indices[0] est la 1ère (Z)
-    # sorted_indices[1] est la 2e (X+Y)
-    # sorted_indices[2] est la 3e (X-Y)
     idx_2 = sorted_indices[1]
     idx_3 = sorted_indices[2]
     e23 = eigenvectors[:, [idx_2, idx_3]]                                      # Sélectionnez la 2e et 3e composante principale
-    print(f'eigenvectors[:, [idx_2, idx_3]]  {eigenvectors[:, [idx_2, idx_3]] }')
     reduced_samples = analysis.project_onto_new_basis(samples, e23) # Projetez les données sur les 2e et 3e composantes principales
 
     projected_covariance = numpy.cov(reduced_samples, rowvar=False)                                           # Utilisez la fonction appropriée pour calculer la matrice de covariance des données projetées
@@ -118,7 +112,7 @@ def exercice_2_decorrelation():
 
     plt.show()
 
-
+# Checker avec le prof pourquoi ma classe semble aller de 0 à -15 Y au lieu de 0 à 15
 def exercice_3_visualisation_representation():
     # L1.E3.1 Visualiser la distribution des points pour les 3 classes.
     # -------------------------------------------------------------------------
@@ -146,8 +140,8 @@ def exercice_3_visualisation_representation():
     # L1.E3.4 Calculer les variances sur chaque dimension pour la classe C1 ainsi que leur corrélations
     # -------------------------------------------------------------------------
     data_C1 = reprensentation.get_class("C1")
-    variances = numpy.zeros(data_C1.shape[1])                           # Utilisez la fonction appropriée pour calculer les variances
-    correlations = numpy.zeros((data_C1.shape[1], data_C1.shape[1]))    # Utilisez la fonction appropriée pour calculer les corrélations
+    variances = numpy.var(data_C1, axis=0)                           # Utilisez la fonction appropriée pour calculer les variances
+    correlations = numpy.corrcoef(data_C1, rowvar=False)    # Utilisez la fonction appropriée pour calculer les corrélations
     print("Exercice 3.4: Variances et corrélations pour la classe C1")
     print(f"Variances : {variances}")
     print(f"Corrélations : \n{correlations}")
@@ -159,7 +153,7 @@ def exercice_3_visualisation_representation():
 
     # Utilisez la fonction appropriée pour projeter les données sur la nouvelle base
     # Indice: Utilisez la fonction project_onto_new_basis définie précédement pour créer une nouvelle représentation des données
-    decorrelated_data = numpy.zeros_like(data3classes.data)
+    decorrelated_data = analysis.project_onto_new_basis(data3classes.data, eigenvectors_C1)
     decorrelated_representation = dataset.Representation(data=decorrelated_data, labels=data3classes.labels)
 
     print("\nExercice 3.6: Données décorrelées de la classe C1")
@@ -277,8 +271,8 @@ def main():
     # pylint: disable = using-constant-test, multiple-statements
 
     # if True: exercice_1_generation()
-    if True: exercice_2_decorrelation()
-    # if True: exercice_3_visualisation_representation()
+    # if True: exercice_2_decorrelation()
+    if True: exercice_3_visualisation_representation()
     # if True: exercice_4_choix_representation()
 
 

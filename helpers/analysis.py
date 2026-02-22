@@ -42,13 +42,13 @@ def compute_gaussian_model(data: numpy.ndarray):
     """
     # L1.E3.2 Calculer la moyenne et la matrice de covariance des données
     # -------------------------------------------------------------------------
-    mean = numpy.zeros(data.shape[1])
-    covariance = numpy.eye(data.shape[1])
+    mean = numpy.mean(data, axis=0)
+    covariance = numpy.cov(data, rowvar=False)
     # -------------------------------------------------------------------------
 
     # L1.E3.5 Calculer les valeurs propres et les vecteurs propres de la matrice de covariance
     # -------------------------------------------------------------------------
-    eigenvalues, eigenvectors = numpy.zeros(data.shape[1]), numpy.zeros((data.shape[1], data.shape[1]))
+    eigenvalues, eigenvectors = numpy.linalg.eig(covariance)
     # -------------------------------------------------------------------------
 
     return mean, covariance, eigenvalues, eigenvectors
