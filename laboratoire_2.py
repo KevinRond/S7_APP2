@@ -4,6 +4,8 @@ import pathlib
 
 import matplotlib.pyplot as plt
 import numpy
+import sklearn
+import sklearn.inspection
 
 # Must be call before any other TensorFlow/Keras import
 # Suppress oneDNN custom operations info
@@ -26,10 +28,10 @@ def main():
     # -------------------------------------------------------------------------
     nn_classifier = classifier.NeuralNetworkClassifier(input_dim=representation.data.shape[1],
                                                        output_dim=len(representation.unique_labels),
-                                                       n_hidden=1,
-                                                       n_neurons=2,
-                                                       lr=0.01,
-                                                       n_epochs=10,
+                                                       n_hidden=2,
+                                                       n_neurons=32,
+                                                       lr=0.005,
+                                                       n_epochs=200,
                                                        batch_size=16)
     # -------------------------------------------------------------------------
     nn_classifier.fit(representation)
@@ -59,6 +61,32 @@ def main():
 
     viz.show_confusion_matrix(representation.labels, predictions, representation.unique_labels, plot=True)
     # -------------------------------------------------------------------------
+    print("\n--- Analyse de l'importance des caractéristiques ---")
+    # 1. On prépare les données d'entrées (déjà rescalées par le classifier)
+    X = nn_classifier.preprocess_data(representation.data)
+    
+    # 2. On transforme les labels textuels ('C1', 'C2') en chiffres (0, 1, 2)
+    le = sklearn.preprocessing.LabelEncoder()
+    y = le.fit_transform(representation.labels)
+
+    # 3. Calcul de l'importance
+    # Note: On définit une petite fonction score car sklearn en a besoin
+    def score_func(model, X_test, y_test):
+        preds = model.predict(X_test)
+        # On compare les prédictions (0,1,2) aux vrais labels (0,1,2)
+        return numpy.mean(preds == y_test)
+
+    result = sklearn.inspection.permutation_importance(
+        nn_classifier, X, y, 
+        n_repeats=10, 
+        random_state=42,
+        scoring=score_func # On lui donne notre fonction de calcul d'accuracy
+    )
+
+    # 4. Affichage des résultats dans la console
+    for i in result.importances_mean.argsort()[::-1]:
+        print(f"Dimension {i} (PC{i+1}): {result.importances_mean[i]:.4f} ± {result.importances_std[i]:.4f}")
+    # --------------------------
 
     viz.plot_classification_errors(representation, predictions)
 

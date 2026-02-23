@@ -301,7 +301,7 @@ class NeuralNetworkClassifier(Classifier):
         # -------------------------------------------------------------------------
         self.model = keras.models.Sequential()
         self.model.add(keras.layers.InputLayer(shape=(input_dim,)))
-        for _ in range(self.n_hidden - 1):
+        for _ in range(self.n_hidden):
             self.model.add(keras.layers.Dense(units=self.n_neurons, activation="tanh"))
         self.model.add(keras.layers.Dense(units=output_dim, activation="softmax"))
         # -------------------------------------------------------------------------
@@ -314,8 +314,8 @@ class NeuralNetworkClassifier(Classifier):
         # -------------------------------------------------------------------------
         self.model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=self.lr),
-            loss=keras.losses.MeanSquaredError(),
-            metrics=[]
+            loss=keras.losses.CategoricalCrossentropy(),
+            metrics=["accuracy"]
         )
         # -------------------------------------------------------------------------
 
@@ -351,17 +351,23 @@ class NeuralNetworkClassifier(Classifier):
         # L2.E4.1 Convertissez les étiquettes de classe en un format qui permet d'utiliser une loss plus approprié que MSE
         # pour l'entraînement d'un classificateur.
         # -------------------------------------------------------------------------
-        # Utiliser OneHotEncoder de sklearn à la place de cette ligne
-        one_hot_labels = numpy.zeros((representation.labels.shape[0], len(representation.unique_labels)))
+        labels_column = representation.labels.reshape(-1, 1)
+    
+        encoder = sklearn.preprocessing.OneHotEncoder(sparse_output=False) # sparse_output=False pour avoir un array numpy
+        one_hot_labels = encoder.fit_transform(labels_column)
+        
+        labels_integers = numpy.argmax(one_hot_labels, axis=-1)
         # -------------------------------------------------------------------------
 
         # L2.E4.2 Partitionnez les données en sous-ensemble d'entraînement et de validation.
         # -------------------------------------------------------------------------
-        # Prepare datasets
-        train_data = representation.data
-        val_data = []
-        train_labels = one_hot_labels
-        val_labels = []
+        train_data, val_data, train_labels, val_labels = sklearn.model_selection.train_test_split(
+            representation.data,
+            one_hot_labels,
+            test_size=0.2,
+            random_state=42,
+            stratify=labels_integers
+        )
         # -------------------------------------------------------------------------
 
         return train_data, val_data, train_labels, val_labels
@@ -382,11 +388,16 @@ class NeuralNetworkClassifier(Classifier):
         # L2.E4.4 Utilisez un callback pour visualiser la performance de l'entraînement tout les 25 epochs.
         # et un autre pour arrêter l'entraînement lorsque la généralisation se dégrade.
         # -------------------------------------------------------------------------
-        callbacks=[]
+        early_stop = keras.callbacks.EarlyStopping(
+            monitor='val_loss', 
+            patience=25,
+            restore_best_weights=True # On garde la version qui était la meilleure
+        )
+        callbacks=[early_stop, PrintEveryNEpochs(n_epochs=25)]
 
         self.history = self.model.fit(
             train_data, train_labels,
-            # validation_data=(val_data, val_labels), # TODO: Décommenter si un ensemble de validation est utilisé
+            validation_data=(val_data, val_labels),
             batch_size=self.batch_size,
             epochs=self.n_epochs,
             callbacks=callbacks,
