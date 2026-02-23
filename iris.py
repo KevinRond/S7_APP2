@@ -40,6 +40,7 @@ L2.E3  - Réseau de neurones pour classifier des fleurs
 # pylint: disable = missing-function-docstring, missing-module-docstring, ungrouped-imports, wrong-import-position
 import os
 import pathlib
+from xml.parsers.expat import model
 
 import matplotlib.pyplot as plt
 import numpy
@@ -157,22 +158,27 @@ def main():
     # -------------------------------------------------------------------------
     model = keras.models.Sequential()
     model.add(keras.layers.InputLayer(input_shape=(scaled_data.shape[-1],)))
-    model.add(keras.layers.Dense(units=16, activation="sigmoid"))
-    model.add(keras.layers.Dense(units=labels_one_hot.shape[-1], activation="linear"))
+    model.add(keras.layers.Dense(units=32, activation="relu")) 
+    model.add(keras.layers.Dense(units=16, activation="relu"))
+    model.add(keras.layers.Dense(units=labels_one_hot.shape[-1], activation="softmax"))
     print(model.summary())
     # -------------------------------------------------------------------------
 
     # L2.E3.4 Testez plusieurs configurations d'optimisateur, de taux d'apprentissage et de fonction de coût.
     # -------------------------------------------------------------------------
     model.compile(
-        optimizer=keras.optimizers.SGD(learning_rate=0.4, momentum=0.9),
-        loss=keras.losses.MeanSquaredError(),
+        optimizer=keras.optimizers.Adam(learning_rate=0.01),
+        loss=keras.losses.CategoricalCrossentropy(),
         metrics=["accuracy"]
     )
     # -------------------------------------------------------------------------
-
+    early_stop = keras.callbacks.EarlyStopping(
+        monitor='val_loss', 
+        patience=10, # On attend 10 epochs de remontée avant de couper
+        restore_best_weights=True # On garde la version qui était la meilleure
+    )
     # Entrainement du modèle
-    callbacks=[]
+    callbacks=[early_stop]
 
     # L2.E3.3 Ajoutez les arguments pour l'ensemble de validation.
     # L2.E3.4 Testez plusieurs configurations de nombre d'epochs et de taille de batch.
@@ -181,7 +187,7 @@ def main():
         train_data, train_labels,
         batch_size=16,
         shuffle=True,
-        epochs=75,
+        epochs=100,
         validation_data=(val_data, val_labels),
         callbacks=callbacks,
         verbose=True
