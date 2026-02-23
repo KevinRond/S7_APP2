@@ -144,17 +144,20 @@ def main():
 
     # L2.E3.3 Créez un ensemble d'entraînement et de validation à partir des données préparées.
     # -------------------------------------------------------------------------
-    train_data = scaled_data
-    val_data = []
-    train_labels = labels_one_hot
-    val_labels = []
+    train_data, val_data, train_labels, val_labels = sklearn.model_selection.train_test_split(
+        scaled_data,
+        labels_one_hot,
+        test_size=0.2,
+        random_state=42,
+        stratify=labels
+    )
     # -------------------------------------------------------------------------
 
     # L2.E3.4 Testez plusieurs configurations de réseaux de neurones et de fonction d'activation.
     # -------------------------------------------------------------------------
     model = keras.models.Sequential()
     model.add(keras.layers.InputLayer(input_shape=(scaled_data.shape[-1],)))
-    model.add(keras.layers.Dense(units=3, activation="linear"))
+    model.add(keras.layers.Dense(units=16, activation="sigmoid"))
     model.add(keras.layers.Dense(units=labels_one_hot.shape[-1], activation="linear"))
     print(model.summary())
     # -------------------------------------------------------------------------
@@ -162,7 +165,7 @@ def main():
     # L2.E3.4 Testez plusieurs configurations d'optimisateur, de taux d'apprentissage et de fonction de coût.
     # -------------------------------------------------------------------------
     model.compile(
-        optimizer=keras.optimizers.SGD(learning_rate=0.001, momentum=0.01),
+        optimizer=keras.optimizers.SGD(learning_rate=0.4, momentum=0.9),
         loss=keras.losses.MeanSquaredError(),
         metrics=["accuracy"]
     )
@@ -178,7 +181,8 @@ def main():
         train_data, train_labels,
         batch_size=16,
         shuffle=True,
-        epochs=10,
+        epochs=75,
+        validation_data=(val_data, val_labels),
         callbacks=callbacks,
         verbose=True
     )

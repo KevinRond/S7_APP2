@@ -82,8 +82,8 @@ def main():
     # -------------------------------------------------------------------------
     model = keras.models.Sequential()
     model.add(keras.layers.InputLayer(shape=(2,)))
-    model.add(keras.layers.Dense(units=1, activation="sigmoid"))
-    model.add(keras.layers.Dense(units=1, activation="linear"))
+    model.add(keras.layers.Dense(units=4, activation="sigmoid"))
+    model.add(keras.layers.Dense(units=2, activation="linear"))
     print(model.summary())
     # -------------------------------------------------------------------------
 
@@ -103,7 +103,7 @@ def main():
         data, labels,
         batch_size=len(data),
         shuffle=True,
-        epochs=1000,
+        epochs=150,
         callbacks=None,
         verbose=True
     )
