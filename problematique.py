@@ -64,5 +64,18 @@ def problematique():
     rep.print_class_stats(repr, [feature1_name, feature2_name, feature3_name])
     plt.show()
 
+
+     # TODO: Problématique: Visualisez cette représentation
+    # -------------------------------------------------------------------------
+    # 
+    # -------------------------------------------------------------------------
+
+
+    # TODO: Problématique: Comparez différents classificateurs sur cette
+    # représentation, comme dans le laboratoire 2 et 3.
+    # -------------------------------------------------------------------------
+    # 
+    # -------------------------------------------------------------------------
+
 if __name__ == "__main__":
     problematique()
