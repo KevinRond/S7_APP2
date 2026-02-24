@@ -2,57 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import helpers.dataset as dataset
-import helpers.analysis as analysis
 import helpers.viz as viz
 import helpers.representation as rep
-
-def get_structural_regularity(image_gray):
-    # Use your existing Sobel logic to get gx and gy
-    sobel_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
-    sobel_y = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
-    
-    gx = convolve2d(image_gray, sobel_x, mode='same')
-    gy = convolve2d(image_gray, sobel_y, mode='same')
-    
-    # Calculate magnitude and orientation
-    magnitude = np.sqrt(gx**2 + gy**2)
-    orientation = np.arctan2(gy, gx) * (180 / np.pi) % 180
-    
-    # Mask to keep only strong edges (man-made structures)
-    strong_edges = magnitude > np.percentile(magnitude, 80)
-    relevant_orientations = orientation[strong_edges]
-    
-    # Count edges that are roughly 0, 90, or 180 degrees
-    # (Allowing a 5-degree tolerance for perspective)
-    cardinal_mask = ((relevant_orientations < 5) | 
-                     (relevant_orientations > 175) | 
-                     ((relevant_orientations > 85) & (relevant_orientations < 95)))
-    
-    if len(relevant_orientations) == 0: return 0
-    return (np.sum(cardinal_mask) / len(relevant_orientations)) * 100
-
-def get_mean_saturation(image_hsv):
-    # Streets are gray/muted; Coasts/Forests are vivid
-    return np.mean(image_hsv[:, :, 1]) * 100
-
-def get_sky_smoothness(image_gray):
-    # Coasts have empty skies (low variance at top)
-    # Streets have buildings/power lines at the top (high variance)
-    h = image_gray.shape[0]
-    return np.var(image_gray[:h//4, :]) * 100
-
-def extract_all_features(image):
-    img_float = image / 255.0
-    img_hsv = skimage.color.rgb2hsv(img_float)
-    img_gray = skimage.color.rgb2gray(img_float)
-
-    return [
-        get_structural_regularity(img_gray),
-        get_mean_saturation(img_hsv),
-        get_sky_smoothness(img_gray)
-    ]
-
-# --- UTILITY HELPERS ---
 
 def normalize_features(data):
     """Min-Max normalization to [0, 100] scale."""
@@ -120,7 +71,8 @@ def problematique():
     labels = []
     for idx in subset_indices:
         img, lbl = images[idx]
-        raw_data.append(rep.extract_all_features(img))
+        all_features = rep.extract_all_features(img)
+        raw_data.append([all_features[0], all_features[3], all_features[2]])
         labels.append(lbl)
     
     # 4. Normalization & Representation
@@ -135,7 +87,8 @@ def problematique():
     )
 
     feature1_name = "Structural Regularity"
-    feature2_name = "Mean Saturation"
+    #feature2_name = "Mean Saturation"
+    feature2_name = "Roughness"
     feature3_name = "Sky Smoothness"
 
     viz.plot_data_distribution(
