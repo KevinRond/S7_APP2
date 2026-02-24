@@ -52,6 +52,7 @@ def problematique():
     feature3_name = "Sky Smoothness"
     feature4_name = "Dominant Hue"
     feature5_name = "Orientation Entropy"
+    feature6_name = "ROUGHNESS"
     # feature_names_3D = [feature1_name, feature2_name, feature3_name]
     feature_names_all = [
         feature1_name,
@@ -59,6 +60,7 @@ def problematique():
         feature3_name,
         feature4_name,
         feature5_name,
+        feature6_name,
     ]
     viz.plot_data_distribution(
         repr_3d,
