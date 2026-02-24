@@ -12,60 +12,75 @@ def get_dominant_hue(image_hsv):
     h_values = image_hsv[:, :, 0][mask_colorful]
     return np.median(h_values) * 255 if h_values.size > 0 else 128.0
 
-def get_roughness(image_gray):
-    diff_h = np.abs(image_gray[:, 1:] - image_gray[:, :-1])
-    diff_v = np.abs(image_gray[1:, :] - image_gray[:-1, :])
-    return (np.mean(diff_h) + np.mean(diff_v)) / 2.0
+def get_orientation_entropy(image_gray, n_bins=18):
+    sobel_x = np.array([
+        [-1, 0, 1],
+        [-2, 0, 2],
+        [-1, 0, 1]
+    ])
 
-def get_asphalt_fraction(image_hsv, n_grid=4):
-    h, w, _ = image_hsv.shape
-    bottom_half = image_hsv[h//2:, :, :]
-    bh_h, bh_w, _ = bottom_half.shape
-    
-    asphalt_map = ((bottom_half[:, :, 1] < 0.3) & 
-                  (bottom_half[:, :, 2] > 0.01) & 
-                  (bottom_half[:, :, 2] < 1.0)).astype(float)
+    sobel_y = np.array([
+        [-1, -2, -1],
+        [ 0,  0,  0],
+        [ 1,  2,  1]
+    ])
 
-    y_edges = np.linspace(0, bh_h, n_grid + 1, dtype=int)
-    x_edges = np.linspace(0, bh_w, n_grid + 1, dtype=int)
-    counts = np.zeros((n_grid, n_grid))
-    
-    for gy in range(n_grid):
-        for gx in range(n_grid):
-            cell = asphalt_map[y_edges[gy]:y_edges[gy+1], x_edges[gx]:x_edges[gx+1]]
-            counts[gy, gx] = np.mean(cell) if cell.size > 0 else 0
+    gx = convolve2d(image_gray, sobel_x, mode='same', boundary='symm')
+    gy = convolve2d(image_gray, sobel_y, mode='same', boundary='symm')
 
-    best_frac = 0.0
-    for gy in range(n_grid - 1):
-        for gx in range(n_grid - 1):
-            best_frac = max(best_frac, np.mean(counts[gy:gy+2, gx:gx+2]))
-    return best_frac * 100
+    magnitude = np.sqrt(gx**2 + gy**2) + 1e-8
+    orientation = np.arctan2(gy, gx)  # [-pi, pi]
 
-def get_convergence_score(image_gray):
-    Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
-    Ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
+    # Keep strong edges only (structure, not noise)
+    mask = magnitude > np.percentile(magnitude, 75)
+
+    orientations = orientation[mask]
+
+    # Map to [0, pi]
+    orientations = np.abs(orientations)
+
+    hist, _ = np.histogram(orientations, bins=n_bins, range=(0, np.pi))
+    hist = hist / (np.sum(hist) + 1e-8)
+
+    entropy = -np.sum(hist * np.log(hist + 1e-8))
+
+    return entropy * 100
+
+def get_structural_regularity(image_gray):
+    # Use your existing Sobel logic to get gx and gy
+    sobel_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+    sobel_y = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
     
-    gx = convolve2d(image_gray, Kx, mode='valid')
-    gy = convolve2d(image_gray, Ky, mode='valid')
+    gx = convolve2d(image_gray, sobel_x, mode='same')
+    gy = convolve2d(image_gray, sobel_y, mode='same')
     
-    mag = np.sqrt(gx**2 + gy**2)
-    angle = np.arctan2(gy, gx) * 180 / np.pi
+    # Calculate magnitude and orientation
+    magnitude = np.sqrt(gx**2 + gy**2)
+    orientation = np.arctan2(gy, gx) * (180 / np.pi) % 180
     
-    h_mid = mag.shape[0] // 2
-    thresh = np.percentile(mag, 75)
-    mask = mag[h_mid:, :] > thresh
-    angles_bottom = angle[h_mid:, :][mask]
+    # Mask to keep only strong edges (man-made structures)
+    strong_edges = magnitude > np.percentile(magnitude, 80)
+    relevant_orientations = orientation[strong_edges]
     
-    if angles_bottom.size == 0: return 0.0
-    converging = np.sum(((angles_bottom > 20) & (angles_bottom < 80)) | 
-                        ((angles_bottom > 100) & (angles_bottom < 160)))
-    return (converging / angles_bottom.size) * 100
+    # Count edges that are roughly 0, 90, or 180 degrees
+    # (Allowing a 5-degree tolerance for perspective)
+    cardinal_mask = ((relevant_orientations < 5) | 
+                     (relevant_orientations > 175) | 
+                     ((relevant_orientations > 85) & (relevant_orientations < 95)))
+    
+    if len(relevant_orientations) == 0: return 0
+    return (np.sum(cardinal_mask) / len(relevant_orientations)) * 100
 
 def extract_all_features(image):
     img_float = image / 255.0
     img_hsv = skimage.color.rgb2hsv(img_float)
-    img_gray = np.mean(image, axis=2)
-    return [get_dominant_hue(img_hsv), get_roughness(img_gray), get_asphalt_fraction(img_hsv)]
+    img_gray = skimage.color.rgb2gray(img_float)
+
+    return [
+        get_structural_regularity(img_gray),
+        get_dominant_hue(img_hsv),
+        get_orientation_entropy(img_gray)
+    ]
 
 # --- UTILITY HELPERS ---
 
@@ -78,12 +93,38 @@ def normalize_features(data):
     return ((data - min_vals) / ranges) * 100
 
 def print_class_stats(repr_obj, names):
+    # 1. Print Means Table
     print(f"\n{'Class':<10} | " + " | ".join([f"{n:<15}" for n in names]))
-    print("-" * 70)
+    print("-" * 75)
+    
     for label in repr_obj.unique_labels:
         data = repr_obj.get_class(label)
         means = np.mean(data, axis=0)
         print(f"{label:<10} | " + " | ".join([f"{m:<15.2f}" for m in means]))
+
+    # 2. Print Detailed Stats (Variance & Correlation) per Class
+    print("\n" + "="*75)
+    print("DETAILED ANALYSIS: VARIANCES & CORRELATIONS")
+    print("="*75)
+    
+    for label in repr_obj.unique_labels:
+        data = repr_obj.get_class(label)
+        
+        # Calculate stats
+        variances = np.var(data, axis=0)
+        # rowvar=False because variables are in columns
+        correlations = np.corrcoef(data, rowvar=False) 
+        
+        print(f"\n>>> Class: {label.upper()}")
+        print(f"Variances: {np.array2string(variances, precision=2, separator=', ')}")
+        print("Correlation Matrix:")
+        # Pretty print the matrix with feature names for context
+        header = " " * 12 + "  ".join([f"{n[:10]:>10}" for n in names])
+        print(header)
+        for i, row in enumerate(correlations):
+            row_str = "  ".join([f"{val:>10.2f}" for val in row])
+            print(f"{names[i][:10]:>10} | {row_str}")
+        print("-" * 40)
 
 # --- MAIN FUNCTION ---
 
@@ -114,17 +155,34 @@ def problematique():
     
     # 4. Normalization & Representation
     features_norm = normalize_features(np.array(raw_data))
-    repr_3d = dataset.Representation(data=features_norm, labels=np.array(labels))
+    repr = dataset.Representation(data=features_norm, labels=np.array(labels))
 
     # 5. Visualization & Statistics
     
-    viz.plot_data_distribution(
-        repr_3d, 
-        title="3D Feature Space: Hue vs Roughness vs Asphalt",
-        xlabel="Dominant Hue", ylabel="Roughness", zlabel="Asphalt %"
+    repr_3d = dataset.Representation(
+        data=features_norm[:, :3],
+        labels=np.array(labels)
     )
+
+    feature1_name = "Structural Regularity"
+    feature2_name = "Dominant Hue"
+    feature3_name = "Orientation Entropy"
+
+    viz.plot_data_distribution(
+        repr_3d,
+        title=f"3D Feature Space: {feature1_name} vs {feature2_name} vs {feature3_name}",
+        xlabel=feature1_name,
+        ylabel=feature2_name,
+        zlabel=feature3_name
+    )
+
+    viz.plot_features_distribution(repr, n_bins=32,
+                                  title="Histogrammes des moyennes des fatures",
+                                  features_names=[feature1_name, feature2_name, feature3_name],
+                                  xlabel="Valeur moyenne",
+                                  ylabel="Nombre d'images")
     
-    print_class_stats(repr_3d, ["Hue", "Roughness", "Asphalt"])
+    print_class_stats(repr, [feature1_name, feature2_name, feature3_name])
     plt.show()
 
 if __name__ == "__main__":
