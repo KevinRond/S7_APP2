@@ -6,6 +6,10 @@ import helpers.analysis as analysis
 import helpers.viz as viz
 import helpers.representation as rep
 
+
+# Toggle to show all feature histograms (one window with subplots) or none
+SHOW_FEATURE_HISTOGRAMS = True
+
 # --- MAIN FUNCTION ---
 
 
@@ -45,7 +49,16 @@ def problematique():
     feature1_name = "Structural Regularity"
     feature2_name = "Mean Saturation"
     feature3_name = "Sky Smoothness"
-
+    feature4_name = "Dominant Hue"
+    feature5_name = "Orientation Entropy"
+    # feature_names_3D = [feature1_name, feature2_name, feature3_name]
+    feature_names_all = [
+        feature1_name,
+        feature2_name,
+        feature3_name,
+        feature4_name,
+        feature5_name,
+    ]
     viz.plot_data_distribution(
         repr_3d,
         title=f"3D Feature Space: {feature1_name} vs {feature2_name} vs {feature3_name}",
@@ -54,16 +67,15 @@ def problematique():
         zlabel=feature3_name,
     )
 
-    viz.plot_features_distribution(
-        repr,
+    # Optionally show all feature histograms in a single window
+    rep.plot_feature_histograms(
+        repr_obj=repr,
+        feature_names=feature_names_all,
+        show_histograms=SHOW_FEATURE_HISTOGRAMS,
         n_bins=32,
-        title="Histogrammes des moyennes des fatures",
-        features_names=[feature1_name, feature2_name, feature3_name],
-        xlabel="Valeur moyenne",
-        ylabel="Nombre d'images",
     )
 
-    rep.print_class_stats(repr, [feature1_name, feature2_name, feature3_name])
+    rep.print_class_stats(repr, feature_names_all)
     plt.show()
 
     # TODO: Problématique: Visualisez cette représentation
