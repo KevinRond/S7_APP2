@@ -75,7 +75,7 @@ def problematique():
         print(f"  - {class_name}: {count} images")
     
     # Extraction de features personnalisées pour discrimination
-    # Feature 1: Convergence perspective (détection trapèze de route - lignes convergentes)
+    # Feature 1: Teinte dominante H (médiane de H pour pixels colorés, 0-255)
     # Feature 2: Rugosité/texture (variance locale - fréquence de changement entre pixels)
     # Feature 3: Fraction d'asphalte dans meilleur bloc 2x2 (grille 4x4 dans moitié inférieure)
     features = numpy.zeros((len(subset_indices), 3), dtype=numpy.float32)
@@ -90,8 +90,17 @@ def problematique():
         image, label = images[img_index]
         subset_labels.append(label)
         
-        # Conversion HSV pour extraire S
+        # Conversion HSV pour extraire S et H
         image_hsv = skimage.color.rgb2hsv(image / 255.0)
+        
+        # Calculer la TEINTE DOMINANTE (médiane de H pour pixels colorés)
+        # Filtrer les pixels avec S > 0.1 pour éviter les pixels gris où H n'est pas significatif
+        mask_colorful = image_hsv[:, :, 1] > 0.1
+        H_values = image_hsv[:, :, 0][mask_colorful]
+        if len(H_values) > 0:
+            dominant_hue = numpy.median(H_values) * 255  # Médiane de H, échelle 0-255
+        else:
+            dominant_hue = 128.0  # Valeur neutre si image complètement désaturée
         
         # Fraction de pixels "gris d'asphalte" dans la moitié inférieure
         # On découpe cette moitié en une grille 4x4 de sous-régions et,
@@ -177,6 +186,8 @@ def problematique():
         # Forest/Coast: pas de convergence géométrique marquée
         
         # Utiliser les gradients Sobel pour détecter l'orientation des contours
+        from scipy import ndimage
+        
         # Gradients horizontaux et verticaux avec Sobel
         sobel_x = ndimage.sobel(image_gray, axis=1)  # Gradient horizontal
         sobel_y = ndimage.sobel(image_gray, axis=0)  # Gradient vertical
@@ -219,14 +230,14 @@ def problematique():
         
         perspective_convergence[idx] = convergence_score
         
-        features[idx] = [convergence_score, roughness, asphalt_fraction]
+        features[idx] = [dominant_hue, roughness, asphalt_fraction]
     
     features = numpy.array(features)
     
     # Normalisation min-max pour que chaque feature utilise tout l'axe (0-100)
     print("\nNormalisation des features pour meilleure visualisation...")
     print("Plages originales:")
-    for i, name in enumerate(["Convergence perspective (0-100)", "Rugosité/texture", "Fraction asphalte meilleur bloc (0-100)"]):
+    for i, name in enumerate(["Teinte dominante H (0-255)", "Rugosité/texture", "Fraction asphalte meilleur bloc (0-100)"]):
         print(f"  {name}: [{numpy.min(features[:, i]):.2f}, {numpy.max(features[:, i]):.2f}]")
     
     features_normalized = numpy.zeros_like(features)
@@ -239,7 +250,7 @@ def problematique():
             features_normalized[:, i] = features[:, i]
     
     print("\nPlages après normalisation (0-100):")
-    for i, name in enumerate(["Convergence perspective (0-100)", "Rugosité/texture", "Fraction asphalte meilleur bloc (0-100)"]):
+    for i, name in enumerate(["Teinte dominante H (0-255)", "Rugosité/texture", "Fraction asphalte meilleur bloc (0-100)"]):
         print(f"  {name}: [{numpy.min(features_normalized[:, i]):.2f}, {numpy.max(features_normalized[:, i]):.2f}]")
     
     subset_labels = numpy.array(subset_labels)
@@ -249,8 +260,8 @@ def problematique():
     
     # Visualisation 3D comme dans laboratoire_1.py
     viz.plot_data_distribution(representation,
-                               title="Distribution: Convergence vs Rugosité vs Asphalte",
-                               xlabel="Convergence perspective (trapèze route)",
+                               title="Distribution: Teinte H vs Rugosité vs Fraction asphalte",
+                               xlabel="Teinte dominante H (0-255)",
                                ylabel="Rugosité/texture (variance locale)",
                                zlabel="Fraction asphalte (meilleur bloc 2x2)")
     
@@ -258,7 +269,7 @@ def problematique():
     print("\n" + "="*70)
     print("STATISTIQUES PAR CLASSE (valeurs normalisées 0-100)")
     print("="*70)
-    print(f"{'Classe':<10} {'Convergence':<18} {'Rugosité':<15} {'Frac asphalte':<15}")
+    print(f"{'Classe':<10} {'Teinte H':<18} {'Rugosité':<15} {'Frac asphalte':<15}")
     print("-"*70)
     for class_name in representation.unique_labels:
         class_data = representation.get_class(class_name)
