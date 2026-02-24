@@ -1,50 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import skimage.color
-from scipy.signal import convolve2d
 
 import helpers.dataset as dataset
 import helpers.analysis as analysis
 import helpers.viz as viz
-
-def get_dominant_hue(image_hsv):
-    mask_colorful = image_hsv[:, :, 1] > 0.1
-    h_values = image_hsv[:, :, 0][mask_colorful]
-    return np.median(h_values) * 255 if h_values.size > 0 else 128.0
-
-def get_orientation_entropy(image_gray, n_bins=18):
-    sobel_x = np.array([
-        [-1, 0, 1],
-        [-2, 0, 2],
-        [-1, 0, 1]
-    ])
-
-    sobel_y = np.array([
-        [-1, -2, -1],
-        [ 0,  0,  0],
-        [ 1,  2,  1]
-    ])
-
-    gx = convolve2d(image_gray, sobel_x, mode='same', boundary='symm')
-    gy = convolve2d(image_gray, sobel_y, mode='same', boundary='symm')
-
-    magnitude = np.sqrt(gx**2 + gy**2) + 1e-8
-    orientation = np.arctan2(gy, gx)  # [-pi, pi]
-
-    # Keep strong edges only (structure, not noise)
-    mask = magnitude > np.percentile(magnitude, 75)
-
-    orientations = orientation[mask]
-
-    # Map to [0, pi]
-    orientations = np.abs(orientations)
-
-    hist, _ = np.histogram(orientations, bins=n_bins, range=(0, np.pi))
-    hist = hist / (np.sum(hist) + 1e-8)
-
-    entropy = -np.sum(hist * np.log(hist + 1e-8))
-
-    return entropy * 100
+import helpers.representation as rep
 
 def get_structural_regularity(image_gray):
     # Use your existing Sobel logic to get gx and gy
@@ -160,11 +120,11 @@ def problematique():
     labels = []
     for idx in subset_indices:
         img, lbl = images[idx]
-        raw_data.append(extract_all_features(img))
+        raw_data.append(rep.extract_all_features(img))
         labels.append(lbl)
     
     # 4. Normalization & Representation
-    features_norm = normalize_features(np.array(raw_data))
+    features_norm = rep.normalize_features(np.array(raw_data))
     repr = dataset.Representation(data=features_norm, labels=np.array(labels))
 
     # 5. Visualization & Statistics
@@ -192,8 +152,21 @@ def problematique():
                                   xlabel="Valeur moyenne",
                                   ylabel="Nombre d'images")
     
-    print_class_stats(repr, [feature1_name, feature2_name, feature3_name])
+    rep.print_class_stats(repr, [feature1_name, feature2_name, feature3_name])
     plt.show()
+
+
+     # TODO: Problématique: Visualisez cette représentation
+    # -------------------------------------------------------------------------
+    # 
+    # -------------------------------------------------------------------------
+
+
+    # TODO: Problématique: Comparez différents classificateurs sur cette
+    # représentation, comme dans le laboratoire 2 et 3.
+    # -------------------------------------------------------------------------
+    # 
+    # -------------------------------------------------------------------------
 
 if __name__ == "__main__":
     problematique()
