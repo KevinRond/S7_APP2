@@ -71,6 +71,16 @@ def get_structural_regularity(image_gray):
     if len(relevant_orientations) == 0: return 0
     return (np.sum(cardinal_mask) / len(relevant_orientations)) * 100
 
+def get_mean_saturation(image_hsv):
+    # Streets are gray/muted; Coasts/Forests are vivid
+    return np.mean(image_hsv[:, :, 1]) * 100
+
+def get_sky_smoothness(image_gray):
+    # Coasts have empty skies (low variance at top)
+    # Streets have buildings/power lines at the top (high variance)
+    h = image_gray.shape[0]
+    return np.var(image_gray[:h//4, :]) * 100
+
 def extract_all_features(image):
     img_float = image / 255.0
     img_hsv = skimage.color.rgb2hsv(img_float)
@@ -78,8 +88,8 @@ def extract_all_features(image):
 
     return [
         get_structural_regularity(img_gray),
-        get_dominant_hue(img_hsv),
-        get_orientation_entropy(img_gray)
+        get_mean_saturation(img_hsv),
+        get_sky_smoothness(img_gray)
     ]
 
 # --- UTILITY HELPERS ---
@@ -165,8 +175,8 @@ def problematique():
     )
 
     feature1_name = "Structural Regularity"
-    feature2_name = "Dominant Hue"
-    feature3_name = "Orientation Entropy"
+    feature2_name = "Mean Saturation"
+    feature3_name = "Sky Smoothness"
 
     viz.plot_data_distribution(
         repr_3d,
