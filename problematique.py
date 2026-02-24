@@ -49,9 +49,10 @@ def print_class_stats(repr_obj, names):
 
 # --- MAIN FUNCTION ---
 
+
 def problematique():
     images = dataset.ImageDataset("data/image_dataset/")
-    
+
     # 1. Visualization of Raw Data
     samples = images.sample(12)
     viz.plot_images(samples, title="Dataset Samples")
@@ -74,17 +75,14 @@ def problematique():
         all_features = rep.extract_all_features(img)
         raw_data.append([all_features[0], all_features[3], all_features[2]])
         labels.append(lbl)
-    
+
     # 4. Normalization & Representation
     features_norm = rep.normalize_features(np.array(raw_data))
     repr = dataset.Representation(data=features_norm, labels=np.array(labels))
 
     # 5. Visualization & Statistics
-    
-    repr_3d = dataset.Representation(
-        data=features_norm[:, :3],
-        labels=np.array(labels)
-    )
+
+    repr_3d = dataset.Representation(data=features_norm[:, :3], labels=np.array(labels))
 
     feature1_name = "Structural Regularity"
     #feature2_name = "Mean Saturation"
@@ -96,30 +94,32 @@ def problematique():
         title=f"3D Feature Space: {feature1_name} vs {feature2_name} vs {feature3_name}",
         xlabel=feature1_name,
         ylabel=feature2_name,
-        zlabel=feature3_name
+        zlabel=feature3_name,
     )
 
-    viz.plot_features_distribution(repr, n_bins=32,
-                                  title="Histogrammes des moyennes des fatures",
-                                  features_names=[feature1_name, feature2_name, feature3_name],
-                                  xlabel="Valeur moyenne",
-                                  ylabel="Nombre d'images")
-    
+    viz.plot_features_distribution(
+        repr,
+        n_bins=32,
+        title="Histogrammes des moyennes des fatures",
+        features_names=[feature1_name, feature2_name, feature3_name],
+        xlabel="Valeur moyenne",
+        ylabel="Nombre d'images",
+    )
+
     rep.print_class_stats(repr, [feature1_name, feature2_name, feature3_name])
     plt.show()
 
-
-     # TODO: Problématique: Visualisez cette représentation
+    # TODO: Problématique: Visualisez cette représentation
     # -------------------------------------------------------------------------
-    # 
+    #
     # -------------------------------------------------------------------------
-
 
     # TODO: Problématique: Comparez différents classificateurs sur cette
     # représentation, comme dans le laboratoire 2 et 3.
     # -------------------------------------------------------------------------
-    # 
+    #
     # -------------------------------------------------------------------------
+
 
 if __name__ == "__main__":
     problematique()
