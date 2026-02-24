@@ -2,9 +2,50 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import helpers.dataset as dataset
-import helpers.analysis as analysis
 import helpers.viz as viz
 import helpers.representation as rep
+
+def normalize_features(data):
+    """Min-Max normalization to [0, 100] scale."""
+    min_vals = data.min(axis=0)
+    max_vals = data.max(axis=0)
+    # Avoid division by zero
+    ranges = np.where((max_vals - min_vals) == 0, 1, max_vals - min_vals)
+    return ((data - min_vals) / ranges) * 100
+
+def print_class_stats(repr_obj, names):
+    # 1. Print Means Table
+    print(f"\n{'Class':<10} | " + " | ".join([f"{n:<15}" for n in names]))
+    print("-" * 75)
+    
+    for label in repr_obj.unique_labels:
+        data = repr_obj.get_class(label)
+        means = np.mean(data, axis=0)
+        print(f"{label:<10} | " + " | ".join([f"{m:<15.2f}" for m in means]))
+
+    # 2. Print Detailed Stats (Variance & Correlation) per Class
+    print("\n" + "="*75)
+    print("DETAILED ANALYSIS: VARIANCES & CORRELATIONS")
+    print("="*75)
+    
+    for label in repr_obj.unique_labels:
+        data = repr_obj.get_class(label)
+        
+        # Calculate stats
+        variances = np.var(data, axis=0)
+        # rowvar=False because variables are in columns
+        correlations = np.corrcoef(data, rowvar=False) 
+        
+        print(f"\n>>> Class: {label.upper()}")
+        print(f"Variances: {np.array2string(variances, precision=2, separator=', ')}")
+        print("Correlation Matrix:")
+        # Pretty print the matrix with feature names for context
+        header = " " * 12 + "  ".join([f"{n[:10]:>10}" for n in names])
+        print(header)
+        for i, row in enumerate(correlations):
+            row_str = "  ".join([f"{val:>10.2f}" for val in row])
+            print(f"{names[i][:10]:>10} | {row_str}")
+        print("-" * 40)
 
 # --- MAIN FUNCTION ---
 
@@ -31,7 +72,8 @@ def problematique():
     labels = []
     for idx in subset_indices:
         img, lbl = images[idx]
-        raw_data.append(rep.extract_all_features(img))
+        all_features = rep.extract_all_features(img)
+        raw_data.append([all_features[0], all_features[3], all_features[2]])
         labels.append(lbl)
 
     # 4. Normalization & Representation
@@ -43,7 +85,8 @@ def problematique():
     repr_3d = dataset.Representation(data=features_norm[:, :3], labels=np.array(labels))
 
     feature1_name = "Structural Regularity"
-    feature2_name = "Mean Saturation"
+    #feature2_name = "Mean Saturation"
+    feature2_name = "Roughness"
     feature3_name = "Sky Smoothness"
 
     viz.plot_data_distribution(
