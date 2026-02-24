@@ -26,6 +26,28 @@ def get_dominant_hue(image_hsv):
     return np.median(h_values) * 255 if h_values.size > 0 else 128.0
 
 
+def get_roughness(image_gray):
+    """
+    Calculate texture roughness by measuring intensity gradients.
+
+    Computes the average absolute differences between adjacent pixels
+    in both horizontal and vertical directions.
+
+    High roughness = textured surfaces (forests, rough terrain)
+    Low roughness = smooth surfaces (water, sky, roads)
+
+    Args:
+        image_gray: Grayscale image array (0-1 scale)
+
+    Returns:
+        Roughness value (average gradient magnitude)
+    """
+    diff_horizontal = np.abs(image_gray[:, 1:] - image_gray[:, :-1])
+    diff_vertical = np.abs(image_gray[1:, :] - image_gray[:-1, :])
+    roughness = (np.mean(diff_horizontal) + np.mean(diff_vertical)) / 2.0
+    return roughness
+
+
 def get_orientation_entropy(image_gray, n_bins=18):
     """
     Calculate orientation entropy - measures diversity of edge directions.
@@ -160,6 +182,7 @@ def extract_all_features(image):
         get_sky_smoothness(img_gray),
         get_dominant_hue(img_hsv),
         get_orientation_entropy(img_gray),
+        get_roughness(img_gray),
     ]
 
 

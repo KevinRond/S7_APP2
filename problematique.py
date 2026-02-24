@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import helpers.dataset as dataset
-import helpers.analysis as analysis
 import helpers.viz as viz
 import helpers.representation as rep
 
@@ -35,7 +34,8 @@ def problematique():
     labels = []
     for idx in subset_indices:
         img, lbl = images[idx]
-        raw_data.append(rep.extract_all_features(img))
+        all_features = rep.extract_all_features(img)
+        raw_data.append([all_features[0], all_features[3], all_features[2]])
         labels.append(lbl)
 
     # 4. Normalization & Representation
@@ -47,7 +47,8 @@ def problematique():
     repr_3d = dataset.Representation(data=features_norm[:, :3], labels=np.array(labels))
 
     feature1_name = "Structural Regularity"
-    feature2_name = "Mean Saturation"
+    # feature2_name = "Mean Saturation"
+    feature2_name = "Roughness"
     feature3_name = "Sky Smoothness"
     feature4_name = "Dominant Hue"
     feature5_name = "Orientation Entropy"
