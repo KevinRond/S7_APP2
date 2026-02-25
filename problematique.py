@@ -53,9 +53,9 @@ def problematique():
     ]
 
     # 3D scatter on the first three raw features
-    repr_raw_3d = dataset.Representation(data=features_norm[:, :3], labels=labels)
+    repr_1 = dataset.Representation(data=features_norm[:, :3], labels=labels)
     viz.plot_data_distribution(
-        repr_raw_3d,
+        repr_1,
         title=(
             "Raw Feature Space: Structural Regularity vs Mean Saturation vs "
             "Sky Smoothness"
@@ -63,6 +63,18 @@ def problematique():
         xlabel=feature_names_all[0],
         ylabel=feature_names_all[1],
         zlabel=feature_names_all[2],
+    )
+
+    repr_2 = dataset.Representation(data=features_norm[:, 3:], labels=labels)
+    viz.plot_data_distribution(
+        repr_2,
+        title=(
+            "Raw Feature Space: Dominant Hue vs Orientation Entropy vs "
+            "Roughness"
+        ),
+        xlabel=feature_names_all[3],
+        ylabel=feature_names_all[4],
+        zlabel=feature_names_all[5],
     )
 
     # Optional: all feature histograms in a single window
