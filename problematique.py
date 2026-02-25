@@ -19,8 +19,8 @@ def problematique():
     images = dataset.ImageDataset("data/image_dataset/")
 
     # 1. Visualization of Raw Data
-    samples = images.sample(12)
-    viz.plot_images(samples, title="Dataset Samples")
+    # samples = images.sample(12)
+    # viz.plot_images(samples, title="Dataset Samples")
     # (Optional: call viz.plot_images_histograms here if you still want them)
 
     # 2. Gather images
