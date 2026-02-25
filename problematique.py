@@ -23,14 +23,8 @@ def problematique():
     viz.plot_images(samples, title="Dataset Samples")
     # (Optional: call viz.plot_images_histograms here if you still want them)
 
-    # 2. Subset Selection (100 per class)
-    print("Building subset...")
-    subset_indices = []
-    counts = {label: 0 for label in images.unique_labels}
-    for i, (_, lbl) in enumerate(images):
-        # if counts[lbl] < 100:
-        subset_indices.append(i)
-        counts[lbl] += 1
+    # 2. Gather images
+    subset_indices = list(range(len(images)))
 
     # 3. Extraction (all 6 raw features from representation.py)
     raw_data = []
@@ -112,10 +106,6 @@ def problematique():
 
     # Représentations PCA pour aider à choisir le nombre de composantes
 
-    # Représentation 5D sur les 5 premières composantes principales
-    # (c'est celle que vous pourrez utiliser plus tard pour les classificateurs)
-    repr_pca_5d = dataset.Representation(data=decorrelated[:, :5], labels=labels)
-
     # 3D: PC1, PC2, PC3
     repr_pca_3d = dataset.Representation(data=decorrelated[:, :3], labels=labels)
     viz.plot_data_distribution(
@@ -125,30 +115,6 @@ def problematique():
         ylabel="PC2",
         zlabel="PC3",
     )
-
-    # # 3D: PC1, PC2, PC4
-    # repr_pca_124 = dataset.Representation(
-    #     data=decorrelated[:, [0, 1, 3]], labels=labels
-    # )
-    # viz.plot_data_distribution(
-    #     repr_pca_124,
-    #     title="PCA space: PC1 vs PC2 vs PC4 (decorrelated)",
-    #     xlabel="PC1",
-    #     ylabel="PC2",
-    #     zlabel="PC4",
-    # )
-
-    # # 3D: PC1, PC3, PC4
-    # repr_pca_134 = dataset.Representation(
-    #     data=decorrelated[:, [0, 2, 3]], labels=labels
-    # )
-    # viz.plot_data_distribution(
-    #     repr_pca_134,
-    #     title="PCA space: PC1 vs PC3 vs PC4 (decorrelated)",
-    #     xlabel="PC1",
-    #     ylabel="PC3",
-    #     zlabel="PC4",
-    # )
 
     # 2D PCA views to inspect separability more simply
 
@@ -160,33 +126,6 @@ def problematique():
         xlabel="PC1",
         ylabel="PC2",
     )
-
-    # # 2D: PC1 vs PC3
-    # repr_pca_13 = dataset.Representation(data=decorrelated[:, [0, 2]], labels=labels)
-    # viz.plot_data_distribution(
-    #     repr_pca_13,
-    #     title="PCA space: PC1 vs PC3 (decorrelated)",
-    #     xlabel="PC1",
-    #     ylabel="PC3",
-    # )
-
-    # # 2D: PC2 vs PC3
-    # repr_pca_23 = dataset.Representation(data=decorrelated[:, [1, 2]], labels=labels)
-    # viz.plot_data_distribution(
-    #     repr_pca_23,
-    #     title="PCA space: PC2 vs PC3 (decorrelated)",
-    #     xlabel="PC2",
-    #     ylabel="PC3",
-    # )
-
-    # # 2D: PC1 vs PC4 (useful if PC4 is discriminant)
-    # repr_pca_14 = dataset.Representation(data=decorrelated[:, [0, 3]], labels=labels)
-    # viz.plot_data_distribution(
-    #     repr_pca_14,
-    #     title="PCA space: PC1 vs PC4 (decorrelated)",
-    #     xlabel="PC1",
-    #     ylabel="PC4",
-    # )
 
     # 7. Train/validation split et représentation PCA(3) pour les classificateurs
 
@@ -412,17 +351,6 @@ def problematique():
     viz.plot_numerical_decision_regions(nn_classifier_2d, nn_repr_2d)
 
     plt.show()
-
-    # TODO: Problématique: Visualisez cette représentation
-    # -------------------------------------------------------------------------
-    #
-    # -------------------------------------------------------------------------
-
-    # TODO: Problématique: Comparez différents classificateurs sur cette
-    # représentation, comme dans le laboratoire 2 et 3.
-    # -------------------------------------------------------------------------
-    #
-    # -------------------------------------------------------------------------
 
 
 if __name__ == "__main__":
