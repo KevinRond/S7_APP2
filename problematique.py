@@ -225,17 +225,22 @@ def problematique():
     viz.plot_numerical_decision_regions(bayes_classifier_2d, repr_train_2d)
 
     # 9. Classificateur K-NN (k-plus proches voisins) avec train/validation
-
+    # Recherche du k optimal pour K-NN
     print("\n--- Recherche du k optimal pour K-NN ---")
-    for k in [1, 3, 5, 7]:
+    best_k, best_k_err = 1, 1.0
+    for k in [1, 3, 5, 7, 9]:
         knn_test = classifier.KNNClassifier(n_neighbors=k)
         knn_test.fit(repr_train)
         pred = knn_test.predict(repr_val.data)
         err, _ = analysis.compute_error_rate(repr_val.labels, pred)
         print(f"k={k}: {err*100:.2f}%")
+        if err < best_k_err:
+            best_k, best_k_err = k, err
 
-    print("\n===== K-NN classifier (k=1) on PCA(4) representation =====")
-    knn_classifier = classifier.KNNClassifier(n_neighbors=1)
+    print(f"→ k optimal: {best_k} ({best_k_err*100:.2f}%)")
+
+    print(f"\n===== K-NN classifier (k={best_k}) on PCA(4) representation =====")
+    knn_classifier = classifier.KNNClassifier(n_neighbors=best_k)
     knn_classifier.fit(repr_train)
 
     knn_pred_train = knn_classifier.predict(repr_train.data)
@@ -271,17 +276,23 @@ def problematique():
     viz.plot_numerical_decision_regions(knn_classifier_2d, repr_train_2d)
 
     # 10. Variante : K-NN avec représentants de classe obtenus par k-moyennes
-    print("\n--- Recherche du nombre optimal de représentants (k-moyennes) ---")
-    for n_rep in [1, 2, 3, 5]:
+    # Recherche du nombre optimal de représentants (k-moyennes)
+    print("\n--- Recherche du n_representatives optimal pour K-NN k-moyennes ---")
+    best_rep, best_rep_err = 1, 1.0
+    for n_rep in [1, 2, 3, 5, 7, 9]:
         knn_test = classifier.KNNClassifier(n_neighbors=1, use_kmeans=True, n_representatives=n_rep)
         knn_test.fit(repr_train)
         pred = knn_test.predict(repr_val.data)
         err, _ = analysis.compute_error_rate(repr_val.labels, pred)
         print(f"n_representatives={n_rep}: {err*100:.2f}%")
+        if err < best_rep_err:
+            best_rep, best_rep_err = n_rep, err
 
-    print("\n===== K-NN with k-means representatives (5 reps) on PCA(4) representation =====")
+    print(f"→ n_representatives optimal: {best_rep} ({best_rep_err*100:.2f}%)")
+
+    print(f"\n===== K-NN k-moyennes ({best_rep} reps) on PCA(4) representation =====")
     knn_kmeans_classifier = classifier.KNNClassifier(
-        n_neighbors=1, use_kmeans=True, n_representatives=5
+        n_neighbors=1, use_kmeans=True, n_representatives=best_rep
     )
     knn_kmeans_classifier.fit(repr_train)
 
@@ -314,7 +325,7 @@ def problematique():
 
     # Frontières de décision numériques 2D (PC1, PC2) pour K-NN avec k-moyennes
     knn_kmeans_classifier_2d = classifier.KNNClassifier(
-    n_neighbors=1, use_kmeans=True, n_representatives=5
+    n_neighbors=1, use_kmeans=True, n_representatives=best_rep
 )
     knn_kmeans_classifier_2d.fit(repr_train_2d)
     viz.plot_numerical_decision_regions(knn_kmeans_classifier_2d, repr_train_2d)
