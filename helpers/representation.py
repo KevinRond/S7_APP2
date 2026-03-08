@@ -10,6 +10,24 @@ def get_dominant_hue(image_hsv):
     h_values = image_hsv[:, :, 0][mask_colorful]
     return np.median(h_values) * 255 if h_values.size > 0 else 128.0
 
+def get_sky_blue_ratio(image_hsv):
+    """Proportion de pixels bleu-ciel dans le tiers supérieur de l'image.
+    Discrimine coast (ciel bleu) vs street (bâtiments, peu de ciel)."""
+    h = image_hsv.shape[0]
+    top_third = image_hsv[: h // 3, :, :]  # tiers supérieur seulement
+
+    hue = top_third[:, :, 0]        # teinte [0, 1]
+    sat = top_third[:, :, 1]        # saturation [0, 1]
+    val = top_third[:, :, 2]        # valeur/luminosité [0, 1]
+
+    # Masque : bleu-cyan pâle (typique du ciel)
+    blue_sky_mask = (
+        (hue >= 0.50) & (hue <= 0.75) &  # teinte bleu à cyan
+        (sat < 0.50) &                    # peu saturé (ciel pâle)
+        (val > 0.40)                      # assez lumineux
+    )
+
+    return np.mean(blue_sky_mask) * 100  # en pourcentage
 
 def get_roughness(image_gray):
     diff_horizontal = np.abs(image_gray[:, 1:] - image_gray[:, :-1])
@@ -82,6 +100,53 @@ def get_sky_smoothness(image_gray):
     h = image_gray.shape[0]
     return np.var(image_gray[: h // 4, :]) * 100
 
+def get_hue_diversity(image_hsv):
+    """Diversité des teintes sur les pixels colorés.
+    Street = gris uniforme → faible diversité
+    Coast = eau + sable + ciel → plus diversifié
+    Forest = vert dominant → diversité modérée"""
+    sat = image_hsv[:, :, 1]
+    hue = image_hsv[:, :, 0]
+    
+    # Seulement les pixels avec assez de couleur
+    colorful = hue[sat > 0.15]
+    
+    if colorful.size < 10:
+        return 0.0
+    
+    return np.std(colorful) * 100
+
+def get_horizontal_dominance(image_gray):
+    """Ratio gradients verticaux / gradients horizontaux.
+    Coast : grande surface uniforme → gradients horizontaux faibles
+    Street : bâtiments, bords → gradients horizontaux forts
+    Forest : texture partout → ratio intermédiaire"""
+    
+    # Gradient horizontal (variation gauche-droite)
+    grad_h = np.abs(image_gray[:, 1:] - image_gray[:, :-1])
+    
+    # Gradient vertical (variation haut-bas)  
+    grad_v = np.abs(image_gray[1:, :] - image_gray[:-1, :])
+    
+    mean_h = np.mean(grad_h)
+    mean_v = np.mean(grad_v)
+    
+    # Ratio : élevé si plus de variation verticale que horizontale
+    if mean_h < 1e-8:
+        return 0.0
+    return (mean_v / (mean_h + 1e-8)) * 100
+
+def get_gray_pixel_ratio(image_hsv):
+    """Proportion de pixels neutres/gris (faible saturation).
+    Street : asphalte, béton → beaucoup de gris
+    Coast/Forest : eau, sable, végétation → moins de gris"""
+    sat = image_hsv[:, :, 1]
+    val = image_hsv[:, :, 2]
+    
+    # Pixel gris : peu saturé ET luminosité moyenne (pas noir, pas blanc)
+    gray_mask = (sat < 0.15) & (val > 0.2) & (val < 0.85)
+    
+    return np.mean(gray_mask) * 100
 
 def extract_all_features(image):
     img_float = image / 255.0

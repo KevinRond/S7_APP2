@@ -184,13 +184,13 @@ class KNNClassifier(Classifier):
             # L3.E2.3 Compléter l'utilisation de KMeans
             # à partir des arguments fournis au constructeur de KNNClassifier
             # -----------------------------------------------------------------
-            self.kmeans = sklearn.cluster.KMeans(1, n_init="auto")
+            self.kmeans = sklearn.cluster.KMeans(self.n_representatives, n_init="auto")
             # -----------------------------------------------------------------
 
         # L3.E2.1 Complétez l'utilisation de KNeighborsClassifier
         # à partire des arguments fournis au constructeur de KNNClassifier
         # ---------------------------------------------------------------------
-        self.knn = sklearn.neighbors.KNeighborsClassifier(1)
+        self.knn = sklearn.neighbors.KNeighborsClassifier(self.n_neighbors)
         # ---------------------------------------------------------------------
 
     def fit(self, representation: dataset.Representation):

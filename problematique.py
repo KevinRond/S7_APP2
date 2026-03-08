@@ -171,7 +171,7 @@ def problematique():
     features_val = (raw_val - feat_min) / denom * 100.0
 
     # PCA ajustée sur l'ensemble d'entraînement uniquement
-    pca_clf = PCA(n_components=3)
+    pca_clf = PCA(n_components=4)
     decor_train = pca_clf.fit_transform(features_train)
     decor_val = pca_clf.transform(features_val)
 
@@ -216,7 +216,7 @@ def problematique():
         repr_val.unique_labels,
         plot=False,
     )
-    viz.plot_classification_errors(repr_val, bayes_pred_val)
+    # viz.plot_classification_errors(repr_val, bayes_pred_val)
 
     # Frontières de décision numériques en 2D sur (PC1, PC2) (apprises sur train)
     repr_train_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
@@ -226,8 +226,15 @@ def problematique():
 
     # 9. Classificateur K-NN (k-plus proches voisins) avec train/validation
 
-    print("\n===== K-NN classifier (1-NN) on PCA(3) representation =====")
+    print("\n--- Recherche du k optimal pour K-NN ---")
+    for k in [1, 3, 5, 7]:
+        knn_test = classifier.KNNClassifier(n_neighbors=k)
+        knn_test.fit(repr_train)
+        pred = knn_test.predict(repr_val.data)
+        err, _ = analysis.compute_error_rate(repr_val.labels, pred)
+        print(f"k={k}: {err*100:.2f}%")
 
+    print("\n===== K-NN classifier (k=1) on PCA(4) representation =====")
     knn_classifier = classifier.KNNClassifier(n_neighbors=1)
     knn_classifier.fit(repr_train)
 
@@ -256,7 +263,7 @@ def problematique():
         repr_val.unique_labels,
         plot=False,
     )
-    viz.plot_classification_errors(repr_val, knn_pred_val)
+    # viz.plot_classification_errors(repr_val, knn_pred_val)
 
     # Frontières de décision numériques 2D (PC1, PC2) pour 1-NN (apprises sur train)
     knn_classifier_2d = classifier.KNNClassifier(n_neighbors=1)
@@ -264,11 +271,17 @@ def problematique():
     viz.plot_numerical_decision_regions(knn_classifier_2d, repr_train_2d)
 
     # 10. Variante : K-NN avec représentants de classe obtenus par k-moyennes
+    print("\n--- Recherche du nombre optimal de représentants (k-moyennes) ---")
+    for n_rep in [1, 2, 3, 5]:
+        knn_test = classifier.KNNClassifier(n_neighbors=1, use_kmeans=True, n_representatives=n_rep)
+        knn_test.fit(repr_train)
+        pred = knn_test.predict(repr_val.data)
+        err, _ = analysis.compute_error_rate(repr_val.labels, pred)
+        print(f"n_representatives={n_rep}: {err*100:.2f}%")
 
-    print("\n===== K-NN with k-means representatives on PCA(3) representation =====")
-
+    print("\n===== K-NN with k-means representatives (5 reps) on PCA(4) representation =====")
     knn_kmeans_classifier = classifier.KNNClassifier(
-        n_neighbors=1, use_kmeans=True, n_representatives=1
+        n_neighbors=1, use_kmeans=True, n_representatives=5
     )
     knn_kmeans_classifier.fit(repr_train)
 
@@ -297,12 +310,12 @@ def problematique():
         repr_val.unique_labels,
         plot=False,
     )
-    viz.plot_classification_errors(repr_val, knn_kmeans_pred_val)
+    # viz.plot_classification_errors(repr_val, knn_kmeans_pred_val)
 
     # Frontières de décision numériques 2D (PC1, PC2) pour K-NN avec k-moyennes
     knn_kmeans_classifier_2d = classifier.KNNClassifier(
-        n_neighbors=1, use_kmeans=True, n_representatives=1
-    )
+    n_neighbors=1, use_kmeans=True, n_representatives=5
+)
     knn_kmeans_classifier_2d.fit(repr_train_2d)
     viz.plot_numerical_decision_regions(knn_kmeans_classifier_2d, repr_train_2d)
 
@@ -310,43 +323,34 @@ def problematique():
 
     print("\n===== Neural network classifier on PCA(3) representation =====")
 
-    # Utilise la représentation PCA(3) globale (decorrelated[:, :3])
-    nn_repr = repr_pca_3d
+    # Section 11 — remplace les lignes du réseau de neurones par :
+    print("\n===== Neural network classifier on PCA(4) representation =====")
 
     nn_classifier = classifier.NeuralNetworkClassifier(
-        input_dim=nn_repr.data.shape[1],
-        output_dim=len(nn_repr.unique_labels),
+        input_dim=repr_train.data.shape[1],   # 4 dimensions automatiquement
+        output_dim=len(repr_train.unique_labels),
         n_hidden=2,
         n_neurons=32,
         lr=0.005,
         n_epochs=200,
         batch_size=16,
     )
+    nn_classifier.fit(repr_train)
 
-    nn_classifier.fit(nn_repr)
-
-    # Visualiser l'historique d'entraînement (loss / accuracy train & val)
     viz.plot_metric_history(nn_classifier.history)
 
-    # Évaluer sur l'ensemble complet (comme dans le laboratoire 2)
-    nn_pred_idx = nn_classifier.predict(nn_repr.data)
-    nn_predictions = np.array([nn_repr.unique_labels[i] for i in nn_pred_idx])
+    nn_pred_idx = nn_classifier.predict(repr_val.data)
+    nn_predictions = np.array([repr_train.unique_labels[i] for i in nn_pred_idx])
 
     nn_error_rate, nn_error_indices = analysis.compute_error_rate(
-        nn_repr.labels, nn_predictions
+        repr_val.labels, nn_predictions
     )
     print(
         f"\nNeural network classification errors: {len(nn_error_indices)} / "
-        f"{len(nn_repr.labels)} ({nn_error_rate * 100:.2f} %)"
+        f"{len(repr_val.labels)} ({nn_error_rate * 100:.2f} %)"
     )
-
-    viz.show_confusion_matrix(
-        nn_repr.labels,
-        nn_predictions,
-        nn_repr.unique_labels,
-        plot=False,
-    )
-    viz.plot_classification_errors(nn_repr, nn_predictions)
+    viz.show_confusion_matrix(repr_val.labels, nn_predictions, repr_train.unique_labels, plot=False)
+    # viz.plot_classification_errors(nn_repr, nn_predictions)
 
     # Frontières de décision numériques 2D (PC1, PC2) pour le réseau de neurones
     nn_repr_2d = dataset.Representation(data=decorrelated[:, :2], labels=labels)
