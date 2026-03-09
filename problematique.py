@@ -120,7 +120,9 @@ def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
     aprioris = counts / counts.sum()
     print(f"A priori calculés : {dict(zip(unique_labels, aprioris.round(3)))}")
 
-    bayes_classifier = classifier.BayesClassifier(aprioris=aprioris, density_function=analysis.HistogramPDF)
+    bayes_classifier = classifier.BayesClassifier(
+        aprioris=aprioris, density_function=analysis.GaussianPDF
+    )
     bayes_classifier.fit(repr_train)
 
     # Erreur sur l'ensemble d'entraînement
