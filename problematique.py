@@ -300,10 +300,10 @@ def run_neural_network_classifier(
         input_dim=repr_all.data.shape[1],  # 3 dimensions automatiquement
         output_dim=len(repr_all.unique_labels),
         n_hidden=2,
-        n_neurons=32,
-        lr=0.005,
+        n_neurons=16,
+        lr=0.001,
         n_epochs=200,
-        batch_size=16,
+        batch_size=32,
     )
     nn_classifier.fit(repr_all)
 
@@ -329,10 +329,10 @@ def run_neural_network_classifier(
         input_dim=2,
         output_dim=len(nn_repr_2d.unique_labels),
         n_hidden=2,
-        n_neurons=32,
-        lr=0.005,
+        n_neurons=16,
+        lr=0.001,
         n_epochs=200,
-        batch_size=16,
+        batch_size=32,
     )
     nn_classifier_2d.fit(nn_repr_2d)
     viz.plot_numerical_decision_regions(nn_classifier_2d, nn_repr_2d)
