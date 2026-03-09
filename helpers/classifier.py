@@ -116,20 +116,20 @@ class BayesClassifier(Classifier):
         """
         class_probabilities = []
         for density in self.densities:
-            probability = density.compute_probability(data) # P(x|C_i) for all x in the dataset
+            probability = density.compute_probability(data)  # P(x|C_i) pour tout x
             class_probabilities.append(probability)
-        class_probabilities = numpy.array(class_probabilities)
+        class_probabilities = numpy.array(class_probabilities)  # shape: (n_classes, n_samples)
 
-        # Minimize the risk
-        # L3.E3.2 Compléter cette fonction pour déployer le classificateur en assumant des classe équiprobables à coût unitaire
-        # L3.S1 Modifier cette partie pour prendre en compte la matrice de coût et des classes non équiprobables
-        # ---------------------------------------------------------------------
-        risks = numpy.zeros((data.shape[0], len(self.densities)))
+        # class_probabilities.T : shape (n_samples, n_classes)
+        # aprioris shape: (n_classes,)
+        # posteriori[k, j] = P(x_k | C_j) * P(C_j)
+        posteriori = class_probabilities.T * self.aprioris  # broadcasting sur les lignes
 
-        # Ici, argmax de la probabilité assume des coûts unitaires et des aprioris égaux
-        # Dans le cadre de la problématique on cherche à minimiser le risque
-        predictions = numpy.argmax(class_probabilities.T, axis=1)
-        # ---------------------------------------------------------------------
+        # risks[k, i] = Σ_j cost_matrix[i, j] * posteriori[k, j]
+        risks = posteriori @ self.cost_matrix.T  # shape: (n_samples, n_classes)
+
+        # On prédit la classe qui minimise le risque
+        predictions = numpy.argmin(risks, axis=1)
 
         return predictions
 

@@ -70,9 +70,13 @@ def train_val_split_pca4(raw_data, labels):
 def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
     """Stage 8: Bayesian Gaussian classifier + 2D decision regions."""
 
-    print("\n===== Bayesian Gaussian classifier on PCA(3) representation =====")
+    print("\n===== Bayesian Gaussian classifier on PCA(4) representation =====")
+    # Calcul des a priori depuis l'ensemble d'entraînement uniquement
+    unique_labels, counts = np.unique(repr_train.labels, return_counts=True)
+    aprioris = counts / counts.sum()
+    print(f"A priori calculés : {dict(zip(unique_labels, aprioris.round(3)))}")
 
-    bayes_classifier = classifier.BayesClassifier()
+    bayes_classifier = classifier.BayesClassifier(aprioris=aprioris, density_function=analysis.HistogramPDF)
     bayes_classifier.fit(repr_train)
 
     # Erreur sur l'ensemble d'entraînement
@@ -108,10 +112,10 @@ def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
     )
 
     # Frontières de décision numériques en 2D sur (PC1, PC2) (apprises sur train)
-    repr_train_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
-    bayes_classifier_2d = classifier.BayesClassifier()
-    bayes_classifier_2d.fit(repr_train_2d)
-    viz.plot_numerical_decision_regions(bayes_classifier_2d, repr_train_2d)
+    # repr_train_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
+    # bayes_classifier_2d = classifier.BayesClassifier()
+    # bayes_classifier_2d.fit(repr_train_2d)
+    # viz.plot_numerical_decision_regions(bayes_classifier_2d, repr_train_2d)
 
 
 def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):

@@ -248,7 +248,7 @@ class HistogramPDF(ProbabilityDensityFunction):
         compute_probability(data): Calcule la probabilité des données selon la
             distribution basée sur l'histogramme.
     """
-    def __init__(self, data: numpy.ndarray, n_bins = 30):
+    def __init__(self, data: numpy.ndarray, n_bins = 3):
         """
         Args:
             data (numpy.ndarray): Les données utilisées pour estimer les paramètres
@@ -262,7 +262,8 @@ class HistogramPDF(ProbabilityDensityFunction):
         # L3.S2.1 Construire un modèle empirique de densité de probabilité pour chacune des classes
         # (Utilisez numpy.histogramdd, retirez les tenseur nulles et les 1 suspect)
         # ---------------------------------------------------------------------
-        self.histogram, self.bin_edges = numpy.histogramdd(numpy.zeros_like(data), bins=1, density=True)
+        self.histogram, self.bin_edges = numpy.histogramdd(data, bins=n_bins, density=True)
+        self.histogram = numpy.where(self.histogram == 0, 1e-10, self.histogram)
         # ---------------------------------------------------------------------
 
     def compute_probability(self, data: numpy.ndarray) -> numpy.ndarray:
@@ -274,5 +275,31 @@ class HistogramPDF(ProbabilityDensityFunction):
         """
         # L3.S2.2 Compléter la méthode pour calculer la probabilité d'appartenir à cette classe
         # ---------------------------------------------------------------------
-        return numpy.zeros(data.shape[0])
+        probabilities = numpy.zeros(data.shape[0])
+
+        for i, point in enumerate(data):
+            # Trouver l'indice du bin correspondant pour chaque dimension
+            bin_indices = []
+            out_of_bounds = False
+
+            for dim in range(self.dim):
+                edges = self.bin_edges[dim]
+                idx = numpy.searchsorted(edges, point[dim], side='right') - 1
+
+                # Clamp au dernier bin valide si le point est exactement au bord max
+                idx = numpy.clip(idx, 0, len(edges) - 2)
+
+                # Si le point est hors des bornes de l'histogramme
+                if point[dim] < edges[0] or point[dim] > edges[-1]:
+                    out_of_bounds = True
+                    break
+
+                bin_indices.append(idx)
+
+            if out_of_bounds:
+                probabilities[i] = 1e-10
+            else:
+                probabilities[i] = self.histogram[tuple(bin_indices)]
+
+        return probabilities
         # ---------------------------------------------------------------------
