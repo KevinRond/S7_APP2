@@ -23,7 +23,7 @@ def explore_representations():
     images = dataset.ImageDataset(pathlib.Path(__file__).parent / "data/image_dataset/")
 
     # Visualiser quelques images du dataset
-    N = 18
+    N = 9
     samples = images.sample(N)
     viz.plot_images(samples, title="Exemples d'images du dataset (sandbox)")
 
@@ -48,6 +48,38 @@ def explore_representations():
     for ax in plt.gcf().get_axes():
         ax.axvline(140, color="k", linestyle="--", linewidth=1)
         ax.axvline(170, color="k", linestyle="--", linewidth=1)
+
+    # -----------------------------------------------------------------
+    # Histogrammes RGB (valeurs brutes 0-255)
+    # -----------------------------------------------------------------
+    viz.plot_images_histograms(
+        samples,
+        n_bins=256,
+        title="Histogrammes des canaux RGB",
+        x_label="Valeur (0-255)",
+        y_label="Nombre de pixels",
+        channel_names=["R", "G", "B"],
+        colors=["r", "g", "b"],
+    )
+
+    # -----------------------------------------------------------------
+    # Histogrammes LAB (L*: 0-100, a*: -128-127, b*: -128-127)
+    # -----------------------------------------------------------------
+    samples_lab = []
+    for image, label in samples:
+        image_lab = skimage.color.rgb2lab(image / 255.0)
+        scaled_lab = analysis.rescale_lab(image_lab, n_bins=256)
+        samples_lab.append((scaled_lab, label))
+
+    viz.plot_images_histograms(
+        samples_lab,
+        n_bins=256,
+        title="Histogrammes des canaux LAB",
+        x_label="Valeur (reéchelonné 0-255)",
+        y_label="Nombre de pixels",
+        channel_names=["L*", "a*", "b*"],
+        colors=["gray", "m", "y"],
+    )
 
     # -----------------------------------------------------------------
     # Même histogrammes HSV mais en ne prenant que la moitié inférieure

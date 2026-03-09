@@ -10,24 +10,85 @@ def get_dominant_hue(image_hsv):
     h_values = image_hsv[:, :, 0][mask_colorful]
     return np.median(h_values) * 255 if h_values.size > 0 else 128.0
 
+
 def get_sky_blue_ratio(image_hsv):
     """Proportion de pixels bleu-ciel dans le tiers supérieur de l'image.
     Discrimine coast (ciel bleu) vs street (bâtiments, peu de ciel)."""
     h = image_hsv.shape[0]
     top_third = image_hsv[: h // 3, :, :]  # tiers supérieur seulement
 
-    hue = top_third[:, :, 0]        # teinte [0, 1]
-    sat = top_third[:, :, 1]        # saturation [0, 1]
-    val = top_third[:, :, 2]        # valeur/luminosité [0, 1]
+    hue = top_third[:, :, 0]  # teinte [0, 1]
+    sat = top_third[:, :, 1]  # saturation [0, 1]
+    val = top_third[:, :, 2]  # valeur/luminosité [0, 1]
 
     # Masque : bleu-cyan pâle (typique du ciel)
     blue_sky_mask = (
-        (hue >= 0.50) & (hue <= 0.75) &  # teinte bleu à cyan
-        (sat < 0.50) &                    # peu saturé (ciel pâle)
-        (val > 0.40)                      # assez lumineux
+        (hue >= 0.50)
+        & (hue <= 0.75)  # teinte bleu à cyan
+        & (sat < 0.50)  # peu saturé (ciel pâle)
+        & (val > 0.40)  # assez lumineux
     )
 
     return np.mean(blue_sky_mask) * 100  # en pourcentage
+
+
+def get_asphalt_fraction_bottom(image_hsv):
+    """Fraction maximale de pixels "asphalte" dans un bloc 2x2
+    de la moitié inférieure de l'image, en pourcentage.
+
+    Approche inspirée de exploration_exercice4: on découpe la moitié
+    inférieure en une grille 4x4 de cellules, on calcule la fraction
+    d'asphalte dans chaque cellule (faible saturation, valeur moyenne),
+    puis on prend le meilleur bloc 2x2 de cellules adjacentes.
+    """
+
+    # On ne garde que la moitié inférieure de l'image
+    h = image_hsv.shape[0]
+    bottom_half = image_hsv[h // 2 :, :, :]
+
+    s_low = 0.3
+    v_low, v_high = 0.01, 1.0
+
+    h_bh, w_bh, _ = bottom_half.shape
+    n_rows = 4
+    n_cols = 4
+    y_edges = np.linspace(0, h_bh, n_rows + 1, dtype=int)
+    x_edges = np.linspace(0, w_bh, n_cols + 1, dtype=int)
+
+    asphalt_counts = np.zeros((n_rows, n_cols), dtype=float)
+    total_counts = np.zeros((n_rows, n_cols), dtype=float)
+
+    # Fraction d'asphalte par cellule de la grille 4x4
+    for gy in range(n_rows):
+        for gx in range(n_cols):
+            y0, y1 = y_edges[gy], y_edges[gy + 1]
+            x0, x1 = x_edges[gx], x_edges[gx + 1]
+            if y1 <= y0 or x1 <= x0:
+                continue
+
+            cell = bottom_half[y0:y1, x0:x1, :]
+            s_cell = cell[:, :, 1].ravel()
+            v_cell = cell[:, :, 2].ravel()
+
+            mask_asphalt_cell = (s_cell < s_low) & (v_cell > v_low) & (v_cell < v_high)
+
+            asphalt_counts[gy, gx] = np.sum(mask_asphalt_cell.astype(float))
+            total_counts[gy, gx] = s_cell.size
+
+    # Meilleure fraction sur tous les blocs 2x2 de cellules adjacentes
+    best_fraction = 0.0
+    for gy in range(n_rows - 1):
+        for gx in range(n_cols - 1):
+            asphalt_block = asphalt_counts[gy : gy + 2, gx : gx + 2].sum()
+            total_block = total_counts[gy : gy + 2, gx : gx + 2].sum()
+            if total_block == 0:
+                continue
+            frac_block = asphalt_block / total_block
+            if frac_block > best_fraction:
+                best_fraction = frac_block
+
+    return best_fraction * 100.0
+
 
 def get_roughness(image_gray):
     diff_horizontal = np.abs(image_gray[:, 1:] - image_gray[:, :-1])
@@ -100,6 +161,7 @@ def get_sky_smoothness(image_gray):
     h = image_gray.shape[0]
     return np.var(image_gray[: h // 4, :]) * 100
 
+
 def get_hue_diversity(image_hsv):
     """Diversité des teintes sur les pixels colorés.
     Street = gris uniforme → faible diversité
@@ -107,34 +169,36 @@ def get_hue_diversity(image_hsv):
     Forest = vert dominant → diversité modérée"""
     sat = image_hsv[:, :, 1]
     hue = image_hsv[:, :, 0]
-    
+
     # Seulement les pixels avec assez de couleur
     colorful = hue[sat > 0.15]
-    
+
     if colorful.size < 10:
         return 0.0
-    
+
     return np.std(colorful) * 100
+
 
 def get_horizontal_dominance(image_gray):
     """Ratio gradients verticaux / gradients horizontaux.
     Coast : grande surface uniforme → gradients horizontaux faibles
     Street : bâtiments, bords → gradients horizontaux forts
     Forest : texture partout → ratio intermédiaire"""
-    
+
     # Gradient horizontal (variation gauche-droite)
     grad_h = np.abs(image_gray[:, 1:] - image_gray[:, :-1])
-    
-    # Gradient vertical (variation haut-bas)  
+
+    # Gradient vertical (variation haut-bas)
     grad_v = np.abs(image_gray[1:, :] - image_gray[:-1, :])
-    
+
     mean_h = np.mean(grad_h)
     mean_v = np.mean(grad_v)
-    
+
     # Ratio : élevé si plus de variation verticale que horizontale
     if mean_h < 1e-8:
         return 0.0
     return (mean_v / (mean_h + 1e-8)) * 100
+
 
 def get_gray_pixel_ratio(image_hsv):
     """Proportion de pixels neutres/gris (faible saturation).
@@ -142,11 +206,12 @@ def get_gray_pixel_ratio(image_hsv):
     Coast/Forest : eau, sable, végétation → moins de gris"""
     sat = image_hsv[:, :, 1]
     val = image_hsv[:, :, 2]
-    
+
     # Pixel gris : peu saturé ET luminosité moyenne (pas noir, pas blanc)
     gray_mask = (sat < 0.15) & (val > 0.2) & (val < 0.85)
-    
+
     return np.mean(gray_mask) * 100
+
 
 def extract_all_features(image):
     img_float = image / 255.0
@@ -160,6 +225,10 @@ def extract_all_features(image):
         get_dominant_hue(img_hsv),
         get_orientation_entropy(img_gray),
         get_roughness(img_gray),
+        # get_sky_blue_ratio retiré de la représentation principale
+        get_hue_diversity(img_hsv),
+        get_horizontal_dominance(img_gray),
+        get_asphalt_fraction_bottom(img_hsv),
     ]
 
 

@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.inspection import permutation_importance
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import StandardScaler
 
 import helpers.dataset as dataset
 import helpers.viz as viz
@@ -14,7 +17,7 @@ SHOW_FEATURE_HISTOGRAMS = True
 
 
 def train_val_split_pca4(raw_data, labels):
-    """Train/validation split + normalization + PCA(4D) representation."""
+    """Train/validation split + normalization + PCA(5D) representation."""
 
     rng = np.random.default_rng(0)
     train_indices = []
@@ -36,17 +39,13 @@ def train_val_split_pca4(raw_data, labels):
     labels_train = labels[train_indices]
     labels_val = labels[val_indices]
 
-    # Normalisation basée uniquement sur l'ensemble d'entraînement
-    feat_min = raw_train.min(axis=0)
-    feat_max = raw_train.max(axis=0)
-    denom = feat_max - feat_min
-    denom[denom == 0] = 1.0
-
-    features_train = (raw_train - feat_min) / denom * 100.0
-    features_val = (raw_val - feat_min) / denom * 100.0
+    # Standardisation (z-score) basée uniquement sur l'ensemble d'entraînement
+    scaler = StandardScaler().fit(raw_train)
+    features_train = scaler.transform(raw_train)
+    features_val = scaler.transform(raw_val)
 
     # PCA ajustée sur l'ensemble d'entraînement uniquement
-    pca_clf = PCA(n_components=4)
+    pca_clf = PCA(n_components=5)
     decor_train = pca_clf.fit_transform(features_train)
     decor_val = pca_clf.transform(features_val)
 
@@ -65,6 +64,51 @@ def train_val_split_pca4(raw_data, labels):
         repr_train,
         repr_val,
     )
+
+
+def run_feature_importance(
+    features_train, features_val, labels_train, labels_val, feature_names
+):
+    """Permutation importance on normalized features before PCA."""
+    print("\n===== Permutation Feature Importance (k=5 KNN, no PCA) =====")
+
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(features_train, labels_train)
+
+    baseline = knn.score(features_val, labels_val)
+    print(f"Baseline validation accuracy (5-NN, no PCA): {baseline * 100:.2f}%")
+
+    result = permutation_importance(
+        knn, features_val, labels_val, n_repeats=30, random_state=0
+    )
+
+    sorted_idx = result.importances_mean.argsort()[::-1]
+
+    print("\nFeature importances (mean accuracy drop when feature is shuffled):")
+    for i in sorted_idx:
+        print(
+            f"  {feature_names[i]:<30}: "
+            f"{result.importances_mean[i]:+.4f} ± {result.importances_std[i]:.4f}"
+        )
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(
+        range(len(feature_names)),
+        result.importances_mean[sorted_idx],
+        yerr=result.importances_std[sorted_idx],
+        align="center",
+        capsize=4,
+        color=[
+            "tomato" if v > 0 else "steelblue"
+            for v in result.importances_mean[sorted_idx]
+        ],
+    )
+    ax.set_xticks(range(len(feature_names)))
+    ax.set_xticklabels([feature_names[i] for i in sorted_idx], rotation=45, ha="right")
+    ax.set_title("Permutation Feature Importance (5-NN, no PCA)")
+    ax.set_ylabel("Mean accuracy decrease when shuffled")
+    ax.axhline(0, color="k", linewidth=0.8, linestyle="--")
+    fig.tight_layout()
 
 
 def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
@@ -130,7 +174,7 @@ def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
 
     print(f"→ k optimal: {best_k} ({best_k_err * 100:.2f}%)")
 
-    print(f"\n===== K-NN classifier (k={best_k}) on PCA(4) representation =====")
+    print(f"\n===== K-NN classifier (k={best_k}) on PCA(5) representation =====")
     knn_classifier = classifier.KNNClassifier(n_neighbors=best_k)
     knn_classifier.fit(repr_train)
 
@@ -185,7 +229,7 @@ def run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train):
 
     print(f"→ n_representatives optimal: {best_rep} ({best_rep_err * 100:.2f}%)")
 
-    print(f"\n===== K-NN k-moyennes ({best_rep} reps) on PCA(4) representation =====")
+    print(f"\n===== K-NN k-moyennes ({best_rep} reps) on PCA(5) representation =====")
     knn_kmeans_classifier = classifier.KNNClassifier(
         n_neighbors=1, use_kmeans=True, n_representatives=best_rep
     )
@@ -235,7 +279,7 @@ def run_neural_network_classifier(
     labels,
     repr_val,
 ):
-    """Stage 11: Neural network classifier on PCA(4) + 2D regions."""
+    """Stage 11: Neural network classifier on PCA(5) + 2D regions."""
 
     # Utiliser l'ensemble complet (train + val) pour le RN,
     # le découpage train/validation est géré à l'intérieur de
@@ -244,10 +288,10 @@ def run_neural_network_classifier(
     labels_all = np.concatenate([labels_train, labels_val])
     repr_all = dataset.Representation(data=decor_all, labels=labels_all)
 
-    print("\n===== Neural network classifier on PCA(4) representation =====")
+    print("\n===== Neural network classifier on PCA(5) representation =====")
 
     nn_classifier = classifier.NeuralNetworkClassifier(
-        input_dim=repr_all.data.shape[1],  # 4 dimensions automatiquement
+        input_dim=repr_all.data.shape[1],  # 3 dimensions automatiquement
         output_dim=len(repr_all.unique_labels),
         n_hidden=2,
         n_neurons=32,
@@ -299,7 +343,7 @@ def problematique():
     # 2. Gather images
     subset_indices = list(range(len(images)))
 
-    # 3. Extraction (all 6 raw features from representation.py)
+    # 3. Extraction (all raw features from representation.py)
     raw_data = []
     labels = []
     for idx in subset_indices:
@@ -310,20 +354,34 @@ def problematique():
     raw_data = np.array(raw_data)
     labels = np.array(labels)
 
-    # 4. Normalization & Representation (6D)
+    # 4. Normalization & Representation (9D)
     features_norm = rep.normalize_features(raw_data)
+
     repr_raw = dataset.Representation(data=features_norm, labels=labels)
 
     # 5. Visualization & Statistics in raw feature space
 
     feature_names_all = [
-        "Structural Regularity",
-        "Mean Saturation",
-        "Sky Smoothness",
-        "Dominant Hue",
-        "Orientation Entropy",
-        "Roughness",
+        "Structural Regularity",  # 0
+        "Mean Saturation",  # 1
+        "Sky Smoothness",  # 2
+        "Dominant Hue",  # 3
+        "Orientation Entropy",  # 4
+        "Roughness",  # 5
+        "Hue Diversity",  # 6
+        "Horizontal Dominance",  # 7
+        "Asphalt Fraction Bottom",  # 8
     ]
+
+    # Top-5 features from permutation importance analysis.
+    # To revert to all 9 features, comment out this line and the slicing below.
+    SELECTED_FEATURES = [
+        0,
+        2,
+        4,
+        5,
+        7,
+    ]  # Struct. Reg., Sky Smooth., Orient. Entropy, Roughness, Horiz. Dom.
 
     # 3D scatter on the first three raw features
     repr_1 = dataset.Representation(data=features_norm[:, :3], labels=labels)
@@ -338,13 +396,66 @@ def problematique():
         zlabel=feature_names_all[2],
     )
 
-    repr_2 = dataset.Representation(data=features_norm[:, 3:], labels=labels)
+    repr_2 = dataset.Representation(data=features_norm[:, 3:6], labels=labels)
     viz.plot_data_distribution(
         repr_2,
         title=("Raw Feature Space: Dominant Hue vs Orientation Entropy vs Roughness"),
         xlabel=feature_names_all[3],
         ylabel=feature_names_all[4],
         zlabel=feature_names_all[5],
+    )
+
+    # Additional 2D views combining original and newly added features
+
+    # Structural Regularity vs Mean Saturation
+    repr_str_sat = dataset.Representation(data=features_norm[:, [0, 1]], labels=labels)
+    viz.plot_data_distribution(
+        repr_str_sat,
+        title="Raw Feature Space: Structural Regularity vs Mean Saturation",
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[1],
+    )
+
+    # Mean Saturation vs Hue Diversity
+    repr_sat_huediv = dataset.Representation(
+        data=features_norm[:, [1, 6]], labels=labels
+    )
+    viz.plot_data_distribution(
+        repr_sat_huediv,
+        title="Raw Feature Space: Mean Saturation vs Hue Diversity",
+        xlabel=feature_names_all[1],
+        ylabel=feature_names_all[6],
+    )
+
+    # Dominant Hue vs Hue Diversity
+    repr_hue_div = dataset.Representation(data=features_norm[:, [3, 6]], labels=labels)
+    viz.plot_data_distribution(
+        repr_hue_div,
+        title="Raw Feature Space: Dominant Hue vs Hue Diversity",
+        xlabel=feature_names_all[3],
+        ylabel=feature_names_all[6],
+    )
+
+    # Orientation Entropy vs Roughness
+    repr_ent_rough = dataset.Representation(
+        data=features_norm[:, [4, 5]], labels=labels
+    )
+    viz.plot_data_distribution(
+        repr_ent_rough,
+        title="Raw Feature Space: Orientation Entropy vs Roughness",
+        xlabel=feature_names_all[4],
+        ylabel=feature_names_all[5],
+    )
+
+    # Horizontal Dominance vs Asphalt Fraction Bottom
+    repr_horiz_asph = dataset.Representation(
+        data=features_norm[:, [7, 8]], labels=labels
+    )
+    viz.plot_data_distribution(
+        repr_horiz_asph,
+        title="Raw Feature Space: Horizontal Dominance vs Asphalt Fraction Bottom",
+        xlabel=feature_names_all[7],
+        ylabel=feature_names_all[8],
     )
 
     # Optional: all feature histograms in a single window
@@ -409,6 +520,43 @@ def problematique():
         ylabel="PC2",
     )
 
+    # PCA sur les 5 features sélectionnées uniquement (pour comparaison)
+    features_selected_norm = features_norm[:, SELECTED_FEATURES]
+    selected_names = [feature_names_all[i] for i in SELECTED_FEATURES]
+
+    pca_sel = PCA(n_components=len(SELECTED_FEATURES))
+    decorrelated_sel = pca_sel.fit_transform(features_selected_norm)
+
+    plt.figure()
+    plt.plot(
+        np.arange(1, len(SELECTED_FEATURES) + 1),
+        pca_sel.explained_variance_ratio_,
+        marker="o",
+    )
+    plt.title("Explained variance ratio — selected 5 features")
+    plt.xlabel("Principal component index")
+    plt.ylabel("Variance ratio")
+    plt.grid(True, alpha=0.3)
+
+    repr_sel_3d = dataset.Representation(data=decorrelated_sel[:, :3], labels=labels)
+    viz.plot_data_distribution(
+        repr_sel_3d,
+        title="PCA space (5 features): PC1 vs PC2 vs PC3",
+        xlabel="PC1",
+        ylabel="PC2",
+        zlabel="PC3",
+    )
+
+    repr_sel_2d = dataset.Representation(
+        data=decorrelated_sel[:, [0, 1]], labels=labels
+    )
+    viz.plot_data_distribution(
+        repr_sel_2d,
+        title="PCA space (5 features): PC1 vs PC2",
+        xlabel="PC1",
+        ylabel="PC2",
+    )
+
     # 7–11. Train/validation split, then classifiers and neural network
 
     (
@@ -422,7 +570,15 @@ def problematique():
         decor_val,
         repr_train,
         repr_val,
-    ) = train_val_split_pca4(raw_data, labels)
+    ) = train_val_split_pca4(raw_data[:, SELECTED_FEATURES], labels)
+
+    run_feature_importance(
+        features_train,
+        features_val,
+        labels_train,
+        labels_val,
+        [feature_names_all[i] for i in SELECTED_FEATURES],
+    )
 
     run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train)
     run_knn_classifier(repr_train, repr_val, decor_train, labels_train)
