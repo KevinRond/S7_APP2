@@ -12,32 +12,24 @@ import helpers.analysis as analysis
 import helpers.classifier as classifier
 
 
+# Toggle to show all feature histograms (one window with subplots) or none
 SHOW_FEATURE_HISTOGRAMS = True
 
-FEATURE_NAMES = [
-    "Structural Regularity",  # 0
-    "Mean Saturation",        # 1
-    "Sky Smoothness",         # 2
-    "Dominant Hue",           # 3
-    "Orientation Entropy",    # 4
-    "Roughness",              # 5
-    "Horizontal Dominance",   # 6
-]
 
-SELECTED_FEATURES = [0, 2, 4, 6]  # Struct. Reg., Sky Smooth., Orient. Entropy, Horiz. Dom.
+def train_val_split_pca4(raw_data, labels):
+    """Train/validation split + normalization + PCA(5D) representation."""
 
-
-def train_val_split_pca(raw_data, labels):
-    """Découpage 70/30 stratifié + normalisation z-score + PCA."""
-    rng = np.random.default_rng(0)
-    train_indices, val_indices = [], []
+    rng = np.random.default_rng(0)  # no seed: random split each run
+    train_indices = []
+    val_indices = []
 
     for lbl in np.unique(labels):
         class_idx = np.where(labels == lbl)[0]
         rng.shuffle(class_idx)
-        n_train = int(0.7 * len(class_idx))
-        train_indices.extend(class_idx[:n_train])
-        val_indices.extend(class_idx[n_train:])
+        n_class = len(class_idx)
+        n_train_class = int(0.7 * n_class)
+        train_indices.extend(class_idx[:n_train_class])
+        val_indices.extend(class_idx[n_train_class:])
 
     train_indices = np.array(train_indices)
     val_indices = np.array(val_indices)
@@ -47,13 +39,14 @@ def train_val_split_pca(raw_data, labels):
     labels_train = labels[train_indices]
     labels_val = labels[val_indices]
 
-    # Normalisation basée uniquement sur l'ensemble d'entraînement
+    # Standardisation (z-score) basée uniquement sur l'ensemble d'entraînement
     scaler = StandardScaler().fit(raw_train)
     features_train = scaler.transform(raw_train)
     features_val = scaler.transform(raw_val)
 
     # PCA ajustée sur l'ensemble d'entraînement uniquement
-    pca_clf = PCA(n_components=min(len(SELECTED_FEATURES), raw_data.shape[1]))
+    # n_components: keep all PCs up to the number of selected features (max 4)
+    pca_clf = PCA(n_components=min(7, raw_data.shape[1]))
     decor_train = pca_clf.fit_transform(features_train)
     decor_val = pca_clf.transform(features_val)
 
@@ -61,30 +54,43 @@ def train_val_split_pca(raw_data, labels):
     repr_val = dataset.Representation(data=decor_val, labels=labels_val)
 
     return (
-        raw_train, raw_val,
-        labels_train, labels_val,
-        features_train, features_val,
-        decor_train, decor_val,
-        repr_train, repr_val,
+        raw_train,
+        raw_val,
+        labels_train,
+        labels_val,
+        features_train,
+        features_val,
+        decor_train,
+        decor_val,
+        repr_train,
+        repr_val,
     )
 
 
-def run_feature_importance(features_train, features_val, labels_train, labels_val, feature_names):
-    """Importance des features par permutation (5-PPV, sans PCA)."""
-    print("\n===== Importance des features par permutation (k=5, sans PCA) =====")
+def run_feature_importance(
+    features_train, features_val, labels_train, labels_val, feature_names
+):
+    """Permutation importance on normalized features before PCA."""
+    print("\n===== Permutation Feature Importance (k=5 KNN, no PCA) =====")
 
     knn = KNeighborsClassifier(n_neighbors=5)
     knn.fit(features_train, labels_train)
 
     baseline = knn.score(features_val, labels_val)
-    print(f"Précision de base (validation) : {baseline * 100:.2f}%")
+    print(f"Baseline validation accuracy (5-NN, no PCA): {baseline * 100:.2f}%")
 
-    result = permutation_importance(knn, features_val, labels_val, n_repeats=30, random_state=0)
+    result = permutation_importance(
+        knn, features_val, labels_val, n_repeats=30, random_state=0
+    )
+
     sorted_idx = result.importances_mean.argsort()[::-1]
 
-    print("\nImportance (baisse moyenne de précision lors du mélange) :")
+    print("\nFeature importances (mean accuracy drop when feature is shuffled):")
     for i in sorted_idx:
-        print(f"  {feature_names[i]:<30}: {result.importances_mean[i]:+.4f} ± {result.importances_std[i]:.4f}")
+        print(
+            f"  {feature_names[i]:<30}: "
+            f"{result.importances_mean[i]:+.4f} ± {result.importances_std[i]:.4f}"
+        )
 
     fig, ax = plt.subplots(figsize=(10, 5))
     bars = ax.bar(
@@ -98,107 +104,208 @@ def run_feature_importance(features_train, features_val, labels_train, labels_va
         bar.set_facecolor("tomato" if v > 0 else "steelblue")
     ax.set_xticks(np.arange(len(feature_names)))
     ax.set_xticklabels([feature_names[i] for i in sorted_idx], rotation=45, ha="right")
-    ax.set_title("Importance des features par permutation (5-PPV, sans PCA)")
-    ax.set_ylabel("Baisse moyenne de précision lors du mélange")
+    ax.set_title("Permutation Feature Importance (5-NN, no PCA)")
+    ax.set_ylabel("Mean accuracy decrease when shuffled")
     ax.axhline(0, color="k", linewidth=0.8, linestyle="--")
     fig.tight_layout()
 
 
 def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
-    """Classificateur Bayésien Gaussien + frontières de décision 2D."""
-    print("\n===== Classificateur Bayésien Gaussien =====")
+    """Stage 8: Bayesian Gaussian classifier + 2D decision regions."""
 
+    print("\n===== Bayesian Gaussian classifier on PCA(4) representation =====")
+    # Calcul des a priori depuis l'ensemble d'entraînement uniquement
     unique_labels, counts = np.unique(repr_train.labels, return_counts=True)
     aprioris = counts / counts.sum()
-    print(f"A priori : {dict(zip(unique_labels, aprioris.round(3)))}")
+    print(f"A priori calculés : {dict(zip(unique_labels, aprioris.round(3)))}")
 
-    bayes_clf = classifier.BayesClassifier(aprioris=aprioris)
-    bayes_clf.fit(repr_train)
+    bayes_classifier = classifier.BayesClassifier(aprioris=aprioris)
+    bayes_classifier.fit(repr_train)
 
-    # Erreur entraînement
-    pred_train_idx = bayes_clf.predict(repr_train.data)
-    pred_train = np.array([repr_train.unique_labels[p] for p in pred_train_idx])
-    train_err, _ = analysis.compute_error_rate(repr_train.labels, pred_train)
-
-    # Erreur validation
-    pred_val_idx = bayes_clf.predict(repr_val.data)
-    pred_val = np.array([repr_train.unique_labels[p] for p in pred_val_idx])
-    val_err, _ = analysis.compute_error_rate(repr_val.labels, pred_val)
-
-    print(f"\nErreur entraînement : {train_err * 100:.2f}%")
-    print(f"Erreur validation   : {val_err * 100:.2f}%")
-
-    viz.show_confusion_matrix(
-        repr_val.labels, pred_val, repr_val.unique_labels,
-        plot=True, title="Matrice de confusion - Classificateur Bayésien",
+    # Erreur sur l'ensemble d'entraînement
+    bayes_pred_train_idx = bayes_classifier.predict(repr_train.data)
+    bayes_pred_train = np.array(
+        [repr_train.unique_labels[p] for p in bayes_pred_train_idx]
+    )
+    bayes_train_error, bayes_train_err_idx = analysis.compute_error_rate(
+        repr_train.labels, bayes_pred_train
     )
 
-    # Frontières de décision 2D (PC1 vs PC2) — à des fins de visualisation uniquement
-    repr_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
-    bayes_clf_2d = classifier.BayesClassifier()
-    bayes_clf_2d.fit(repr_2d)
-    viz.plot_numerical_decision_regions(bayes_clf_2d, repr_2d)
+    # Erreur sur l'ensemble de validation
+    bayes_pred_val_idx = bayes_classifier.predict(repr_val.data)
+    bayes_pred_val = np.array([repr_train.unique_labels[p] for p in bayes_pred_val_idx])
+    bayes_val_error, bayes_val_err_idx = analysis.compute_error_rate(
+        repr_val.labels, bayes_pred_val
+    )
+
+    print(
+        f"\nBayes (Gaussian) training error: {len(bayes_train_err_idx)} / "
+        f"{len(repr_train.labels)} ({bayes_train_error * 100:.2f} %)"
+    )
+    print(
+        f"Bayes (Gaussian) validation error: {len(bayes_val_err_idx)} / "
+        f"{len(repr_val.labels)} ({bayes_val_error * 100:.2f} %)"
+    )
+
+    viz.show_confusion_matrix(
+        repr_val.labels,
+        bayes_pred_val,
+        repr_val.unique_labels,
+        plot=True,
+        title="Matrice de confusion - Classificateur Bayésiens",
+    )
+
+    # Frontières de décision numériques en 2D sur (PC1, PC2) (apprises sur train)
+    # repr_train_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
+    # bayes_classifier_2d = classifier.BayesClassifier()
+    # bayes_classifier_2d.fit(repr_train_2d)
+    # viz.plot_numerical_decision_regions(bayes_classifier_2d, repr_train_2d)
 
 
 def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
-    """K-PPV : recherche de la métrique et du k optimal + frontières 2D."""
-    print("\n===== Classificateur K-PPV =====")
+    """Stage 9: standard K-NN classifier + 2D regions."""
 
-    # Recherche de la meilleure métrique
-    best_metric, best_metric_err = "minkowski", 1.0
-    print("\n--- Comparaison des métriques (k=3) ---")
-    for metric in ["minkowski", "manhattan", "chebyshev", "sqeuclidean", "cosine", "canberra", "braycurtis"]:
+    best_metric, best_metric_error = "minkowski", 1.0
+    print("\n--- Comparaison des métriques de distance (k=3) ---")
+    for metric in [
+        "minkowski",
+        "manhattan",
+        "chebyshev",
+        "sqeuclidean",
+        "cosine",
+        "canberra",
+        "braycurtis",
+    ]:
         knn_test = classifier.KNNClassifier(n_neighbors=3, metric=metric)
         knn_test.fit(repr_train)
-        err, _ = analysis.compute_error_rate(repr_val.labels, knn_test.predict(repr_val.data))
+        pred = knn_test.predict(repr_val.data)
+        err, _ = analysis.compute_error_rate(repr_val.labels, pred)
         print(f"  {metric:<12}: {err * 100:.2f}%")
-        if err < best_metric_err:
-            best_metric, best_metric_err = metric, err
+        if err < best_metric_error:
+            best_metric, best_metric_error = metric, err
 
-    # Recherche du k optimal
+    print("\n--- Recherche du k optimal pour K-NN ---")
     best_k, best_k_err = 1, 1.0
-    print(f"\n--- Recherche du k optimal (métrique={best_metric}) ---")
     for k in [1, 3, 5, 7, 9, 11, 15, 21]:
-        knn_test = classifier.KNNClassifier(n_neighbors=k, metric=best_metric)
+        knn_test = classifier.KNNClassifier(n_neighbors=k, metric=f"{best_metric}")
         knn_test.fit(repr_train)
-        err, _ = analysis.compute_error_rate(repr_val.labels, knn_test.predict(repr_val.data))
-        print(f"  k={k}: {err * 100:.2f}%")
+        pred = knn_test.predict(repr_val.data)
+        err, _ = analysis.compute_error_rate(repr_val.labels, pred)
+        print(f"k={k}: {err * 100:.2f}%")
         if err < best_k_err:
             best_k, best_k_err = k, err
 
-    print(f"→ k optimal: {best_k} ({best_k_err * 100:.2f}%), métrique: {best_metric}")
+    print(f"→ k optimal: {best_k} ({best_k_err * 100:.2f}%)")
 
-    # Entraînement final
-    knn_clf = classifier.KNNClassifier(n_neighbors=best_k, metric=best_metric)
-    knn_clf.fit(repr_train)
+    print(f"\n===== K-NN classifier (k={best_k}) with the metric {best_metric} =====")
+    knn_classifier = classifier.KNNClassifier(
+        n_neighbors=best_k, metric=f"{best_metric}"
+    )
+    knn_classifier.fit(repr_train)
 
-    train_err, _ = analysis.compute_error_rate(repr_train.labels, knn_clf.predict(repr_train.data))
-    val_err, _ = analysis.compute_error_rate(repr_val.labels, knn_clf.predict(repr_val.data))
-
-    print(f"\nErreur entraînement : {train_err * 100:.2f}%")
-    print(f"Erreur validation   : {val_err * 100:.2f}%")
-
-    viz.show_confusion_matrix(
-        repr_val.labels, knn_clf.predict(repr_val.data), repr_val.unique_labels,
-        plot=True, title=f"Matrice de confusion - K-PPV (k={best_k}, métrique={best_metric})",
+    knn_pred_train = knn_classifier.predict(repr_train.data)
+    knn_train_error, knn_train_err_idx = analysis.compute_error_rate(
+        repr_train.labels, knn_pred_train
     )
 
-    # Frontières de décision 2D (PC1 vs PC2) — à des fins de visualisation uniquement
-    repr_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
-    knn_clf_2d = classifier.KNNClassifier(n_neighbors=1)
-    knn_clf_2d.fit(repr_2d)
-    viz.plot_numerical_decision_regions(knn_clf_2d, repr_2d)
+    knn_pred_val = knn_classifier.predict(repr_val.data)
+    knn_val_error, knn_val_err_idx = analysis.compute_error_rate(
+        repr_val.labels, knn_pred_val
+    )
+
+    print(
+        f"\nK-NN (1-NN) training error: {len(knn_train_err_idx)} / "
+        f"{len(repr_train.labels)} ({knn_train_error * 100:.2f} %)"
+    )
+    print(
+        f"K-NN (1-NN) validation error: {len(knn_val_err_idx)} / "
+        f"{len(repr_val.labels)} ({knn_val_error * 100:.2f} %)"
+    )
+
+    viz.show_confusion_matrix(
+        repr_val.labels,
+        knn_pred_val,
+        repr_val.unique_labels,
+        plot=True,
+        title=f"Matrice de confusion - Classificateur K-PPV (k={best_k}, metric={best_metric})",
+    )
+
+    # Frontières de décision numériques 2D (PC1, PC2) pour 1-NN (apprises sur train)
+    repr_train_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
+    knn_classifier_2d = classifier.KNNClassifier(n_neighbors=1)
+    knn_classifier_2d.fit(repr_train_2d)
+    viz.plot_numerical_decision_regions(knn_classifier_2d, repr_train_2d)
+
+
+def run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train):
+    """Stage 10: K-NN with k-means representatives + 2D regions."""
+
+    print("\n--- Recherche du n_representatives optimal pour K-NN k-moyennes ---")
+    best_rep, best_rep_err = 1, 1.0
+    for n_rep in [1, 2, 3, 5, 7, 9, 12, 15, 20]:
+        knn_test = classifier.KNNClassifier(
+            n_neighbors=1, use_kmeans=True, n_representatives=n_rep, metric="manhattan"
+        )
+        knn_test.fit(repr_train)
+        pred = knn_test.predict(repr_val.data)
+        err, _ = analysis.compute_error_rate(repr_val.labels, pred)
+        print(f"n_representatives={n_rep}: {err * 100:.2f}%")
+        if err < best_rep_err:
+            best_rep, best_rep_err = n_rep, err
+
+    print(f"→ n_representatives optimal: {best_rep} ({best_rep_err * 100:.2f}%)")
+
+    print(f"\n===== K-NN k-moyennes ({best_rep} reps) on PCA(5) representation =====")
+    knn_kmeans_classifier = classifier.KNNClassifier(
+        n_neighbors=1, use_kmeans=True, n_representatives=best_rep
+    )
+    knn_kmeans_classifier.fit(repr_train)
+
+    knn_kmeans_pred_train = knn_kmeans_classifier.predict(repr_train.data)
+    knn_kmeans_train_error, knn_kmeans_train_err_idx = analysis.compute_error_rate(
+        repr_train.labels, knn_kmeans_pred_train
+    )
+
+    knn_kmeans_pred_val = knn_kmeans_classifier.predict(repr_val.data)
+    knn_kmeans_val_error, knn_kmeans_val_err_idx = analysis.compute_error_rate(
+        repr_val.labels, knn_kmeans_pred_val
+    )
+
+    print(
+        f"\nK-NN (k-means reps) training error: {len(knn_kmeans_train_err_idx)} / "
+        f"{len(repr_train.labels)} ({knn_kmeans_train_error * 100:.2f} %)"
+    )
+    print(
+        f"K-NN (k-means reps) validation error: {len(knn_kmeans_val_err_idx)} / "
+        f"{len(repr_val.labels)} ({knn_kmeans_val_error * 100:.2f} %)"
+    )
+
+    viz.show_confusion_matrix(
+        repr_val.labels,
+        knn_kmeans_pred_val,
+        repr_val.unique_labels,
+        plot=True,
+        title="Matrice de confusion - Classificateur K-PPV + K-moyennes",
+    )
+
+    # Frontières de décision numériques 2D (PC1, PC2) pour K-NN avec k-moyennes
+    repr_train_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
+    knn_kmeans_classifier_2d = classifier.KNNClassifier(
+        n_neighbors=1, use_kmeans=True, n_representatives=best_rep
+    )
+    knn_kmeans_classifier_2d.fit(repr_train_2d)
+    viz.plot_numerical_decision_regions(knn_kmeans_classifier_2d, repr_train_2d)
 
 
 def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
-    """K-PPV + K-moyennes : recherche en grille sur k et n_représentants + frontières 2D."""
-    print("\n===== Classificateur K-PPV + K-moyennes (recherche en grille) =====")
+    """Stage 10: K-NN + K-moyennes avec recherche en grille sur k ET n_representatives."""
 
     k_values = [1, 3, 5, 7, 9, 11, 15, 21]
     rep_values = [1, 2, 3, 5, 7, 9, 12, 15, 20]
 
-    print("\n--- Recherche en grille : k × n_représentants ---")
-    print(f"{'':>10}", end="")
+    # --- Recherche en grille ---
+    print("\n--- Recherche en grille: k × n_representatives ---")
+    print(f"{'n_rep →':>10}", end="")
     for n_rep in rep_values:
         print(f"  rep={n_rep:>2}", end="")
     print()
@@ -209,16 +316,21 @@ def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
     for k in k_values:
         print(f"k={k:<8}", end="")
         for n_rep in rep_values:
+            # n_representatives doit être >= n_neighbors
             if n_rep < k:
                 print(f"  {'N/A':>6}", end="")
                 results[(k, n_rep)] = None
                 continue
 
             knn_test = classifier.KNNClassifier(
-                n_neighbors=k, use_kmeans=True, n_representatives=n_rep, metric="minkowski"
+                n_neighbors=k,
+                use_kmeans=True,
+                n_representatives=n_rep,
+                metric="minkowski",
             )
             knn_test.fit(repr_train)
-            err, _ = analysis.compute_error_rate(repr_val.labels, knn_test.predict(repr_val.data))
+            pred = knn_test.predict(repr_val.data)
+            err, _ = analysis.compute_error_rate(repr_val.labels, pred)
             results[(k, n_rep)] = err
             print(f"  {err * 100:>5.1f}%", end="")
 
@@ -226,45 +338,79 @@ def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
                 best_k, best_rep, best_err = k, n_rep, err
         print()
 
-    print(f"\n→ Meilleure combinaison : k={best_k}, n_représentants={best_rep} ({best_err * 100:.2f}%)")
-
-    # Entraînement final
-    knn_kmeans_clf = classifier.KNNClassifier(
-        n_neighbors=best_k, use_kmeans=True, n_representatives=best_rep
+    print(
+        f"\n→ Meilleure combinaison: k={best_k}, n_representatives={best_rep} ({best_err * 100:.2f}%)"
     )
-    knn_kmeans_clf.fit(repr_train)
 
-    train_err, _ = analysis.compute_error_rate(repr_train.labels, knn_kmeans_clf.predict(repr_train.data))
-    val_err, _ = analysis.compute_error_rate(repr_val.labels, knn_kmeans_clf.predict(repr_val.data))
+    # --- Entraînement final avec les meilleurs hyperparamètres ---
+    print(
+        f"\n===== K-NN k-moyennes (k={best_k}, {best_rep} reps) sur représentation PCA(5) ====="
+    )
+    knn_kmeans_classifier = classifier.KNNClassifier(
+        n_neighbors=best_k,
+        use_kmeans=True,
+        n_representatives=best_rep,
+    )
+    knn_kmeans_classifier.fit(repr_train)
 
-    print(f"\nErreur entraînement : {train_err * 100:.2f}%")
-    print(f"Erreur validation   : {val_err * 100:.2f}%")
+    knn_kmeans_pred_train = knn_kmeans_classifier.predict(repr_train.data)
+    knn_kmeans_train_error, knn_kmeans_train_err_idx = analysis.compute_error_rate(
+        repr_train.labels, knn_kmeans_pred_train
+    )
+
+    knn_kmeans_pred_val = knn_kmeans_classifier.predict(repr_val.data)
+    knn_kmeans_val_error, knn_kmeans_val_err_idx = analysis.compute_error_rate(
+        repr_val.labels, knn_kmeans_pred_val
+    )
+
+    print(
+        f"\nErreur entraînement : {len(knn_kmeans_train_err_idx)} / "
+        f"{len(repr_train.labels)} ({knn_kmeans_train_error * 100:.2f}%)"
+    )
+    print(
+        f"Erreur validation   : {len(knn_kmeans_val_err_idx)} / "
+        f"{len(repr_val.labels)} ({knn_kmeans_val_error * 100:.2f}%)"
+    )
 
     viz.show_confusion_matrix(
-        repr_val.labels, knn_kmeans_clf.predict(repr_val.data), repr_val.unique_labels,
-        plot=True, title=f"Matrice de confusion - K-PPV + K-moyennes (k={best_k}, reps={best_rep})",
+        repr_val.labels,
+        knn_kmeans_pred_val,
+        repr_val.unique_labels,
+        plot=True,
+        title=f"Matrice de confusion - K-PPV + K-moyennes (k={best_k}, reps={best_rep})",
     )
 
-    # Frontières de décision 2D (PC1 vs PC2) — à des fins de visualisation uniquement
-    repr_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
-    knn_kmeans_clf_2d = classifier.KNNClassifier(
+    # Frontières de décision 2D
+    repr_train_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
+    knn_kmeans_2d = classifier.KNNClassifier(
         n_neighbors=best_k, use_kmeans=True, n_representatives=best_rep
     )
-    knn_kmeans_clf_2d.fit(repr_2d)
-    viz.plot_numerical_decision_regions(knn_kmeans_clf_2d, repr_2d)
+    knn_kmeans_2d.fit(repr_train_2d)
+    viz.plot_numerical_decision_regions(knn_kmeans_2d, repr_train_2d)
 
 
-def run_neural_network_classifier(decor_train, decor_val, labels_train, labels_val, decorrelated, labels, repr_val):
-    """Réseau de neurones + frontières de décision 2D."""
-    print("\n===== Classificateur Réseau de Neurones =====")
+def run_neural_network_classifier(
+    decor_train,
+    decor_val,
+    labels_train,
+    labels_val,
+    decorrelated,
+    labels,
+    repr_val,
+):
+    """Stage 11: Neural network classifier on PCA(5) + 2D regions."""
 
-    # Le RN gère lui-même le découpage train/validation interne
+    # Utiliser l'ensemble complet (train + val) pour le RN,
+    # le découpage train/validation est géré à l'intérieur de
+    # NeuralNetworkClassifier.prepare_datasets.
     decor_all = np.vstack([decor_train, decor_val])
     labels_all = np.concatenate([labels_train, labels_val])
     repr_all = dataset.Representation(data=decor_all, labels=labels_all)
 
-    nn_clf = classifier.NeuralNetworkClassifier(
-        input_dim=repr_all.data.shape[1],
+    print("\n===== Neural network classifier on PCA(5) representation =====")
+
+    nn_classifier = classifier.NeuralNetworkClassifier(
+        input_dim=repr_all.data.shape[1],  # 3 dimensions automatiquement
         output_dim=len(repr_all.unique_labels),
         n_hidden=2,
         n_neurons=16,
@@ -272,42 +418,58 @@ def run_neural_network_classifier(decor_train, decor_val, labels_train, labels_v
         n_epochs=200,
         batch_size=16,
     )
-    nn_clf.fit(repr_all)
-    viz.plot_metric_history(nn_clf.history)
+    nn_classifier.fit(repr_all)
 
-    pred_idx = nn_clf.predict(repr_val.data)
-    predictions = np.array([repr_val.unique_labels[i] for i in pred_idx])
-    val_err, _ = analysis.compute_error_rate(repr_val.labels, predictions)
+    viz.plot_metric_history(nn_classifier.history)
 
-    print(f"\nErreur validation : {val_err * 100:.2f}%")
+    nn_pred_idx = nn_classifier.predict(repr_val.data)
+    nn_predictions = np.array([repr_val.unique_labels[i] for i in nn_pred_idx])
 
+    nn_error_rate, nn_error_indices = analysis.compute_error_rate(
+        repr_val.labels, nn_predictions
+    )
+    print(
+        f"\nNeural network classification errors: {len(nn_error_indices)} / "
+        f"{len(repr_val.labels)} ({nn_error_rate * 100:.2f} %)"
+    )
     viz.show_confusion_matrix(
-        repr_val.labels, predictions, repr_all.unique_labels,
-        plot=True, title="Matrice de confusion - Réseau de neurones",
+        repr_val.labels,
+        nn_predictions,
+        repr_all.unique_labels,
+        plot=True,
+        title="Matrice de confusion - Classificateur réseau de neurone",
     )
 
-    # Frontières de décision 2D (PC1 vs PC2) — modèle ré-entraîné sur 2D pour visualisation
-    repr_2d = dataset.Representation(data=decorrelated[:, :2], labels=labels)
-    nn_clf_2d = classifier.NeuralNetworkClassifier(
+    # Frontières de décision numériques 2D (PC1, PC2) pour le réseau de neurones
+    nn_repr_2d = dataset.Representation(data=decorrelated[:, :2], labels=labels)
+    nn_classifier_2d = classifier.NeuralNetworkClassifier(
         input_dim=2,
-        output_dim=len(repr_2d.unique_labels),
+        output_dim=len(nn_repr_2d.unique_labels),
         n_hidden=2,
         n_neurons=16,
         lr=0.001,
         n_epochs=200,
         batch_size=32,
     )
-    nn_clf_2d.fit(repr_2d)
-    viz.plot_numerical_decision_regions(nn_clf_2d, repr_2d)
+    nn_classifier_2d.fit(nn_repr_2d)
+    viz.plot_numerical_decision_regions(nn_classifier_2d, nn_repr_2d)
 
 
 def problematique():
-    # 1. Chargement des images
     images = dataset.ImageDataset("data/image_dataset/")
 
-    # 2. Extraction des features
-    raw_data, labels = [], []
-    for idx in range(len(images)):
+    # 1. Visualization of Raw Data
+    # samples = images.sample(12)
+    # viz.plot_images(samples, title="Dataset Samples")
+    # (Optional: call viz.plot_images_histograms here if you still want them)
+
+    # 2. Gather images
+    subset_indices = list(range(len(images)))
+
+    # 3. Extraction (all raw features from representation.py)
+    raw_data = []
+    labels = []
+    for idx in subset_indices:
         img, lbl = images[idx]
         raw_data.append(rep.extract_all_features(img))
         labels.append(lbl)
@@ -315,121 +477,231 @@ def problematique():
     raw_data = np.array(raw_data)
     labels = np.array(labels)
 
-    # 3. Normalisation des features brutes
+    # 4. Normalization & Representation (9D)
     features_norm = rep.normalize_features(raw_data)
+
     repr_raw = dataset.Representation(data=features_norm, labels=labels)
 
-    # -------------------------------------------------------------------------
-    # 4. Visualisation de l'espace des features brutes
-    # -------------------------------------------------------------------------
+    # 5. Visualization & Statistics in raw feature space
 
-    # Nuages 3D — deux groupes de 3 features brutes
+    feature_names_all = [
+        "Structural Regularity",  # 0
+        "Mean Saturation",  # 1
+        "Sky Smoothness",  # 2
+        "Dominant Hue",  # 3
+        "Orientation Entropy",  # 4
+        "Roughness",  # 5
+        "Horizontal Dominance",  # 6
+    ]
+
+    # Top-5 features from permutation importance analysis.
+    # To revert to all 9 features, comment out this line and the slicing below.
+    SELECTED_FEATURES = [
+        0,  # Structural Regularity  (+0.187, essential)
+        2,
+        4,
+        6,  # Horizontal Dominance   (+0.105, essential)
+    ]
+
+    # 3D scatter on the first three raw features
+    repr_1 = dataset.Representation(data=features_norm[:, :3], labels=labels)
     viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, :3], labels=labels),
-        title="Espace brut : Régularité Structurelle vs Saturation Moyenne vs Lissé Ciel",
-        xlabel=FEATURE_NAMES[0], ylabel=FEATURE_NAMES[1], zlabel=FEATURE_NAMES[2],
+        repr_1,
+        title=(
+            "Raw Feature Space: Structural Regularity vs Mean Saturation vs "
+            "Sky Smoothness"
+        ),
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[1],
+        zlabel=feature_names_all[2],
     )
+
+    repr_2 = dataset.Representation(data=features_norm[:, 3:6], labels=labels)
     viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, 3:6], labels=labels),
-        title="Espace brut : Teinte Dominante vs Entropie d'Orientation vs Rugosité",
-        xlabel=FEATURE_NAMES[3], ylabel=FEATURE_NAMES[4], zlabel=FEATURE_NAMES[5],
+        repr_2,
+        title=("Raw Feature Space: Dominant Hue vs Orientation Entropy vs Roughness"),
+        xlabel=feature_names_all[3],
+        ylabel=feature_names_all[4],
+        zlabel=feature_names_all[5],
     )
 
-    # Nuages 2D — toutes les paires des 4 features sélectionnées
-    selected_pairs = [(0, 2), (0, 4), (0, 6), (2, 4), (2, 6), (4, 6)]
-    for i, j in selected_pairs:
-        viz.plot_data_distribution(
-            dataset.Representation(data=features_norm[:, [i, j]], labels=labels),
-            title=f"Espace brut : {FEATURE_NAMES[i]} vs {FEATURE_NAMES[j]}",
-            xlabel=FEATURE_NAMES[i], ylabel=FEATURE_NAMES[j],
-        )
+    # --- Pairwise 2D plots: Structural Regularity, Sky Smoothness, Orientation Entropy, Horizontal Dominance ---
 
-    # Histogrammes par feature et par classe
+    # Structural Regularity vs Sky Smoothness
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [0, 2]], labels=labels),
+        title="Raw Feature Space: Structural Regularity vs Sky Smoothness",
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[2],
+    )
+
+    # Structural Regularity vs Orientation Entropy
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [0, 4]], labels=labels),
+        title="Raw Feature Space: Structural Regularity vs Orientation Entropy",
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[4],
+    )
+
+    # Structural Regularity vs Horizontal Dominance
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [0, 6]], labels=labels),
+        title="Raw Feature Space: Structural Regularity vs Horizontal Dominance",
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[6],
+    )
+
+    # Sky Smoothness vs Orientation Entropy
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [2, 4]], labels=labels),
+        title="Raw Feature Space: Sky Smoothness vs Orientation Entropy",
+        xlabel=feature_names_all[2],
+        ylabel=feature_names_all[4],
+    )
+
+    # Sky Smoothness vs Horizontal Dominance
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [2, 6]], labels=labels),
+        title="Raw Feature Space: Sky Smoothness vs Horizontal Dominance",
+        xlabel=feature_names_all[2],
+        ylabel=feature_names_all[6],
+    )
+
+    # Orientation Entropy vs Horizontal Dominance
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [4, 6]], labels=labels),
+        title="Raw Feature Space: Orientation Entropy vs Horizontal Dominance",
+        xlabel=feature_names_all[4],
+        ylabel=feature_names_all[6],
+    )
+
+    # # Horizontal Dominance vs Asphalt Fraction Bottom
+    # repr_horiz_asph = dataset.Representation(
+    #     data=features_norm[:, [7, 8]], labels=labels
+    # )
+    # viz.plot_data_distribution(
+    #     repr_horiz_asph,
+    #     title="Raw Feature Space: Horizontal Dominance vs Asphalt Fraction Bottom",
+    #     xlabel=feature_names_all[7],
+    #     ylabel=feature_names_all[8],
+    # )
+
+    # Optional: all feature histograms in a single window
     rep.plot_feature_histograms(
-        repr_obj=repr_raw, feature_names=FEATURE_NAMES,
-        show_histograms=SHOW_FEATURE_HISTOGRAMS, n_bins=32,
+        repr_obj=repr_raw,
+        feature_names=feature_names_all,
+        show_histograms=SHOW_FEATURE_HISTOGRAMS,
+        n_bins=32,
     )
-    rep.print_class_stats(repr_raw, FEATURE_NAMES)
 
-    # Matrice de corrélation entre les features
+    rep.print_class_stats(repr_raw, feature_names_all)
+
+    # Correlation matrix across all samples (to identify redundant features)
     corr_matrix = np.corrcoef(features_norm, rowvar=False)
     fig_corr, ax_corr = plt.subplots(figsize=(8, 7))
     im = ax_corr.imshow(corr_matrix, vmin=-1, vmax=1, cmap="coolwarm")
     fig_corr.colorbar(im, ax=ax_corr)
-    ax_corr.set_xticks(range(len(FEATURE_NAMES)))
-    ax_corr.set_xticklabels(FEATURE_NAMES, rotation=45, ha="right")
-    ax_corr.set_yticks(range(len(FEATURE_NAMES)))
-    ax_corr.set_yticklabels(FEATURE_NAMES)
-    for i in range(len(FEATURE_NAMES)):
-        for j in range(len(FEATURE_NAMES)):
-            ax_corr.text(j, i, f"{corr_matrix[i, j]:.2f}", ha="center", va="center", fontsize=8)
-    ax_corr.set_title("Matrice de corrélation entre les features (tous les exemples)")
+    ax_corr.set_xticks(range(len(feature_names_all)))
+    ax_corr.set_xticklabels(feature_names_all, rotation=45, ha="right")
+    ax_corr.set_yticks(range(len(feature_names_all)))
+    ax_corr.set_yticklabels(feature_names_all)
+    for i in range(len(feature_names_all)):
+        for j in range(len(feature_names_all)):
+            ax_corr.text(
+                j, i, f"{corr_matrix[i, j]:.2f}", ha="center", va="center", fontsize=8
+            )
+    ax_corr.set_title("Feature correlation matrix (all samples)")
     fig_corr.tight_layout()
 
-    # -------------------------------------------------------------------------
-    # 5. PCA globale (toutes les features)
-    # -------------------------------------------------------------------------
+    # PCA with all components so we can inspect full spectrum and eigenvectors
     pca = PCA(n_components=features_norm.shape[1])
     decorrelated = pca.fit_transform(features_norm)
 
-    viz.print_gaussian_model(
-        pca.mean_,
-        np.cov(features_norm, rowvar=False),
-        pca.explained_variance_,
-        pca.components_.T,
-    )
+    mean_vec = pca.mean_
+    # Recompute covariance in original space (for display)
+    cov_mat = np.cov(features_norm, rowvar=False)
+    eigenvalues_sorted = pca.explained_variance_
+    # sklearn.components_ shape: (n_components, n_features), rows are eigenvectors
+    eigenvectors_sorted = pca.components_.T
 
-    # Scree plot — toutes les features
+    print("\nGlobal Gaussian model on normalized features (from PCA):")
+    viz.print_gaussian_model(mean_vec, cov_mat, eigenvalues_sorted, eigenvectors_sorted)
+
+    # Visualiser la variance expliquée (scree plot)
+    explained_variance_ratio = pca.explained_variance_ratio_
     plt.figure()
-    plt.plot(np.arange(1, len(pca.explained_variance_ratio_) + 1), pca.explained_variance_ratio_, marker="o")
-    plt.title("Variance expliquée par composante principale (toutes les features)")
-    plt.xlabel("Indice de la composante principale")
-    plt.ylabel("Ratio de variance")
+    plt.plot(
+        np.arange(1, len(eigenvalues_sorted) + 1),
+        explained_variance_ratio,
+        marker="o",
+    )
+    plt.title("Explained variance ratio per principal component")
+    plt.xlabel("Principal component index")
+    plt.ylabel("Variance ratio")
     plt.grid(True, alpha=0.3)
 
-    # Nuages dans l'espace PCA global
+    # Représentations PCA pour aider à choisir le nombre de composantes
+
+    # 3D: PC1, PC2, PC3
+    repr_pca_3d = dataset.Representation(data=decorrelated[:, :3], labels=labels)
     viz.plot_data_distribution(
-        dataset.Representation(data=decorrelated[:, :3], labels=labels),
-        title="Espace PCA : PC1 vs PC2 vs PC3 (décorrélé, toutes features)",
-        xlabel="PC1", ylabel="PC2", zlabel="PC3",
-    )
-    viz.plot_data_distribution(
-        dataset.Representation(data=decorrelated[:, [0, 1]], labels=labels),
-        title="Espace PCA : PC1 vs PC2 (décorrélé, toutes features)",
-        xlabel="PC1", ylabel="PC2",
+        repr_pca_3d,
+        title="PCA space: PC1 vs PC2 vs PC3 (decorrelated)",
+        xlabel="PC1",
+        ylabel="PC2",
+        zlabel="PC3",
     )
 
-    # -------------------------------------------------------------------------
-    # 6. PCA sur les features sélectionnées uniquement
-    # -------------------------------------------------------------------------
-    features_sel_norm = features_norm[:, SELECTED_FEATURES]
-    selected_names = [FEATURE_NAMES[i] for i in SELECTED_FEATURES]
+    # 2D PCA views to inspect separability more simply
+
+    # 2D: PC1 vs PC2
+    repr_pca_12 = dataset.Representation(data=decorrelated[:, [0, 1]], labels=labels)
+    viz.plot_data_distribution(
+        repr_pca_12,
+        title="PCA space: PC1 vs PC2 (decorrelated)",
+        xlabel="PC1",
+        ylabel="PC2",
+    )
+
+    # PCA sur les 5 features sélectionnées uniquement (pour comparaison)
+    features_selected_norm = features_norm[:, SELECTED_FEATURES]
+    selected_names = [feature_names_all[i] for i in SELECTED_FEATURES]
 
     pca_sel = PCA(n_components=len(SELECTED_FEATURES))
-    decorrelated_sel = pca_sel.fit_transform(features_sel_norm)
+    decorrelated_sel = pca_sel.fit_transform(features_selected_norm)
 
-    # Scree plot — features sélectionnées
     plt.figure()
-    plt.plot(np.arange(1, len(SELECTED_FEATURES) + 1), pca_sel.explained_variance_ratio_, marker="o")
-    plt.title(f"Variance expliquée — {len(SELECTED_FEATURES)} features sélectionnées")
-    plt.xlabel("Indice de la composante principale")
-    plt.ylabel("Ratio de variance")
+    plt.plot(
+        np.arange(1, len(SELECTED_FEATURES) + 1),
+        pca_sel.explained_variance_ratio_,
+        marker="o",
+    )
+    plt.title(f"Explained variance ratio — {len(SELECTED_FEATURES)} selected features")
+    plt.xlabel("Principal component index")
+    plt.ylabel("Variance ratio")
     plt.grid(True, alpha=0.3)
 
-    # Nuages dans l'espace PCA des features sélectionnées
+    repr_sel_3d = dataset.Representation(data=decorrelated_sel[:, :3], labels=labels)
     viz.plot_data_distribution(
-        dataset.Representation(data=decorrelated_sel[:, :3], labels=labels),
-        title=f"Espace PCA ({len(SELECTED_FEATURES)} features sélectionnées) : PC1 vs PC2 vs PC3",
-        xlabel="PC1", ylabel="PC2", zlabel="PC3",
-    )
-    viz.plot_data_distribution(
-        dataset.Representation(data=decorrelated_sel[:, [0, 1]], labels=labels),
-        title=f"Espace PCA ({len(SELECTED_FEATURES)} features sélectionnées) : PC1 vs PC2",
-        xlabel="PC1", ylabel="PC2",
+        repr_sel_3d,
+        title=f"PCA space ({len(SELECTED_FEATURES)} selected features): PC1 vs PC2 vs PC3",
+        xlabel="PC1",
+        ylabel="PC2",
+        zlabel="PC3",
     )
 
-    # Heatmap des loadings PCA
-    loadings = pca_sel.components_
+    repr_sel_2d = dataset.Representation(
+        data=decorrelated_sel[:, [0, 1]], labels=labels
+    )
+    viz.plot_data_distribution(
+        repr_sel_2d,
+        title=f"PCA space ({len(SELECTED_FEATURES)} selected features): PC1 vs PC2",
+        xlabel="PC1",
+        ylabel="PC2",
+    )
+
+    # Loadings heatmap: contribution of each original feature to each PC
+    loadings = pca_sel.components_  # shape: (n_components, n_features)
     fig_load, ax_load = plt.subplots(figsize=(8, 4))
     im_load = ax_load.imshow(loadings, cmap="coolwarm", vmin=-1, vmax=1, aspect="auto")
     fig_load.colorbar(im_load, ax=ax_load)
@@ -440,15 +712,13 @@ def problematique():
     for i in range(len(SELECTED_FEATURES)):
         for j in range(len(SELECTED_FEATURES)):
             ax_load.text(j, i, f"{loadings[i, j]:.2f}", ha="center", va="center", fontsize=9)
-    ax_load.set_title("Loadings PCA — contribution des features originales aux composantes")
+    ax_load.set_title(f"PCA loadings — contribution des features originales aux PC ({len(SELECTED_FEATURES)} features)")
     fig_load.tight_layout()
 
-    # -------------------------------------------------------------------------
-    # 7. Importance des features par permutation
-    # -------------------------------------------------------------------------
+    # 7–11. Train/validation split, then classifiers and neural network
 
-    # Découpage 70/30 pour l'importance des features (sans PCA)
-    rng_fi = np.random.default_rng(0)
+    # Feature importance on ALL features (same 70/30 split, no PCA)
+    rng_fi = np.random.default_rng(0)  # no seed: random split each run
     train_idx_fi, val_idx_fi = [], []
     for lbl in np.unique(labels):
         class_idx = np.where(labels == lbl)[0]
@@ -459,42 +729,57 @@ def problematique():
     train_idx_fi = np.array(train_idx_fi)
     val_idx_fi = np.array(val_idx_fi)
 
-    # Toutes les features
     scaler_all = StandardScaler().fit(raw_data[train_idx_fi])
+    features_all_train = scaler_all.transform(raw_data[train_idx_fi])
+    features_all_val = scaler_all.transform(raw_data[val_idx_fi])
+
     run_feature_importance(
-        scaler_all.transform(raw_data[train_idx_fi]),
-        scaler_all.transform(raw_data[val_idx_fi]),
-        labels[train_idx_fi], labels[val_idx_fi],
-        FEATURE_NAMES,
+        features_all_train,
+        features_all_val,
+        labels[train_idx_fi],
+        labels[val_idx_fi],
+        feature_names_all,
     )
 
-    # Features sélectionnées uniquement
+    # Feature importance on SELECTED features only
     scaler_sel = StandardScaler().fit(raw_data[train_idx_fi][:, SELECTED_FEATURES])
+    features_sel_train = scaler_sel.transform(
+        raw_data[train_idx_fi][:, SELECTED_FEATURES]
+    )
+    features_sel_val = scaler_sel.transform(raw_data[val_idx_fi][:, SELECTED_FEATURES])
+
     run_feature_importance(
-        scaler_sel.transform(raw_data[train_idx_fi][:, SELECTED_FEATURES]),
-        scaler_sel.transform(raw_data[val_idx_fi][:, SELECTED_FEATURES]),
-        labels[train_idx_fi], labels[val_idx_fi],
+        features_sel_train,
+        features_sel_val,
+        labels[train_idx_fi],
+        labels[val_idx_fi],
         selected_names,
     )
 
-    # -------------------------------------------------------------------------
-    # 8-11. Classifieurs
-    # -------------------------------------------------------------------------
     (
-        raw_train, raw_val,
-        labels_train, labels_val,
-        features_train, features_val,
-        decor_train, decor_val,
-        repr_train, repr_val,
-    ) = train_val_split_pca(raw_data[:, SELECTED_FEATURES], labels)
+        raw_train,
+        raw_val,
+        labels_train,
+        labels_val,
+        features_train,
+        features_val,
+        decor_train,
+        decor_val,
+        repr_train,
+        repr_val,
+    ) = train_val_split_pca4(raw_data[:, SELECTED_FEATURES], labels)
 
     run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train)
     run_knn_classifier(repr_train, repr_val, decor_train, labels_train)
+    # run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train)
     run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train)
     run_neural_network_classifier(
-        decor_train, decor_val,
-        labels_train, labels_val,
-        decorrelated, labels,
+        decor_train,
+        decor_val,
+        labels_train,
+        labels_val,
+        decorrelated,
+        labels,
         repr_val,
     )
 
