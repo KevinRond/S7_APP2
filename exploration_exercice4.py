@@ -36,7 +36,7 @@ def explore_representations():
 
     viz.plot_images_histograms(
         samples_hsv,
-        n_bins=256,
+        n_bins=64,
         title="Histogrammes des intensités de pixels HSV (sandbox)",
         x_label="Valeur",
         y_label="Nombre de pixels",
@@ -54,7 +54,7 @@ def explore_representations():
     # -----------------------------------------------------------------
     viz.plot_images_histograms(
         samples,
-        n_bins=256,
+        n_bins=64,
         title="Histogrammes des canaux RGB",
         x_label="Valeur (0-255)",
         y_label="Nombre de pixels",
@@ -73,7 +73,7 @@ def explore_representations():
 
     viz.plot_images_histograms(
         samples_lab,
-        n_bins=256,
+        n_bins=64,
         title="Histogrammes des canaux LAB",
         x_label="Valeur (reéchelonné 0-255)",
         y_label="Nombre de pixels",
@@ -94,7 +94,7 @@ def explore_representations():
 
     viz.plot_images_histograms(
         samples_hsv_bottom,
-        n_bins=256,
+        n_bins=64,
         title="Histogrammes HSV (moitié inférieure des images)",
         x_label="Valeur",
         y_label="Nombre de pixels",
@@ -294,7 +294,7 @@ def explore_representations():
 
     viz.plot_features_distribution(
         representation_hue,
-        n_bins=255,
+        n_bins=64,
         title="Sandbox - Distribution de la teinte dominante (H) par classe",
         features_names=["H_dominante"],
         xlabel="Teinte dominante (0-1)",
@@ -308,7 +308,7 @@ def explore_representations():
 
     viz.plot_features_distribution(
         representation_sat,
-        n_bins=32,
+        n_bins=64,
         title="Sandbox - Distribution de la saturation moyenne (S) par classe",
         features_names=["S_moyenne"],
         xlabel="Saturation moyenne (0-1)",
@@ -320,7 +320,7 @@ def explore_representations():
 
     viz.plot_features_distribution(
         representation_b_lab,
-        n_bins=255,
+        n_bins=64,
         title="Sandbox - Distribution de la moyenne du canal b* (LAB) par classe",
         features_names=["b*_moyen"],
         xlabel="Moyenne du canal b*",
@@ -336,7 +336,7 @@ def explore_representations():
     )
     viz.plot_features_distribution(
         representation_hue_wo_top,
-        n_bins=255,
+        n_bins=64,
         title="Sandbox - Teinte dominante (H) sans tiers supérieur",
         features_names=["H_dom_sans_haut"],
         xlabel="Teinte dominante (0-1)",
@@ -348,7 +348,7 @@ def explore_representations():
     )
     viz.plot_features_distribution(
         representation_sat_wo_top,
-        n_bins=32,
+        n_bins=64,
         title="Sandbox - Saturation moyenne (S) sans tiers supérieur",
         features_names=["S_moy_sans_haut"],
         xlabel="Saturation moyenne (0-1)",
@@ -360,7 +360,7 @@ def explore_representations():
     )
     viz.plot_features_distribution(
         representation_b_lab_wo_top,
-        n_bins=255,
+        n_bins=64,
         title="Sandbox - Moyenne du canal b* sans tiers supérieur",
         features_names=["b*_moy_sans_haut"],
         xlabel="Moyenne du canal b*",
@@ -425,7 +425,7 @@ def explore_representations():
     )
     viz.plot_features_distribution(
         rep_asphalt_bottom,
-        n_bins=255,
+        n_bins=64,
         title="Sandbox - Fraction de pixels gris d'asphalte (meilleure case 4x4, moitié inférieure)",
         features_names=["frac_asphalte_bas"],
         xlabel="Fraction de pixels asphalte (0-1)",

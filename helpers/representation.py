@@ -225,10 +225,11 @@ def extract_all_features(image):
         get_dominant_hue(img_hsv),
         get_orientation_entropy(img_gray),
         get_roughness(img_gray),
-        # get_sky_blue_ratio retiré de la représentation principale
-        get_hue_diversity(img_hsv),
+        # get_hue_diversity(img_hsv),
         get_horizontal_dominance(img_gray),
-        get_asphalt_fraction_bottom(img_hsv),
+        # get_asphalt_fraction_bottom(img_hsv),
+        # get_sky_blue_ratio(img_hsv),
+        # get_gray_pixel_ratio(img_hsv),
     ]
 
 

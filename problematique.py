@@ -45,7 +45,7 @@ def train_val_split_pca4(raw_data, labels):
     features_val = scaler.transform(raw_val)
 
     # PCA ajustée sur l'ensemble d'entraînement uniquement
-    pca_clf = PCA(n_components=5)
+    pca_clf = PCA(n_components=min(6, raw_data.shape[1]))
     decor_train = pca_clf.fit_transform(features_train)
     decor_val = pca_clf.transform(features_val)
 
@@ -92,18 +92,16 @@ def run_feature_importance(
         )
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.bar(
-        range(len(feature_names)),
+    bars = ax.bar(
+        np.arange(len(feature_names)),
         result.importances_mean[sorted_idx],
         yerr=result.importances_std[sorted_idx],
         align="center",
         capsize=4,
-        color=[
-            "tomato" if v > 0 else "steelblue"
-            for v in result.importances_mean[sorted_idx]
-        ],
     )
-    ax.set_xticks(range(len(feature_names)))
+    for bar, v in zip(bars, result.importances_mean[sorted_idx]):
+        bar.set_facecolor("tomato" if v > 0 else "steelblue")
+    ax.set_xticks(np.arange(len(feature_names)))
     ax.set_xticklabels([feature_names[i] for i in sorted_idx], rotation=45, ha="right")
     ax.set_title("Permutation Feature Importance (5-NN, no PCA)")
     ax.set_ylabel("Mean accuracy decrease when shuffled")
@@ -303,7 +301,7 @@ def run_neural_network_classifier(
         n_neurons=16,
         lr=0.001,
         n_epochs=200,
-        batch_size=32,
+        batch_size=16,
     )
     nn_classifier.fit(repr_all)
 
@@ -374,9 +372,7 @@ def problematique():
         "Dominant Hue",  # 3
         "Orientation Entropy",  # 4
         "Roughness",  # 5
-        "Hue Diversity",  # 6
-        "Horizontal Dominance",  # 7
-        "Asphalt Fraction Bottom",  # 8
+        "Horizontal Dominance",  # 6
     ]
 
     # Top-5 features from permutation importance analysis.
@@ -384,10 +380,9 @@ def problematique():
     SELECTED_FEATURES = [
         0,
         2,
-        4,
         5,
-        7,
-    ]  # Struct. Reg., Sky Smooth., Orient. Entropy, Roughness, Horiz. Dom.
+        6,
+    ]  # Struct. Reg., Orient. Entropy, Roughness, Horiz. Dom.
 
     # 3D scatter on the first three raw features
     repr_1 = dataset.Representation(data=features_norm[:, :3], labels=labels)
@@ -453,16 +448,16 @@ def problematique():
         ylabel=feature_names_all[5],
     )
 
-    # Horizontal Dominance vs Asphalt Fraction Bottom
-    repr_horiz_asph = dataset.Representation(
-        data=features_norm[:, [7, 8]], labels=labels
-    )
-    viz.plot_data_distribution(
-        repr_horiz_asph,
-        title="Raw Feature Space: Horizontal Dominance vs Asphalt Fraction Bottom",
-        xlabel=feature_names_all[7],
-        ylabel=feature_names_all[8],
-    )
+    # # Horizontal Dominance vs Asphalt Fraction Bottom
+    # repr_horiz_asph = dataset.Representation(
+    #     data=features_norm[:, [7, 8]], labels=labels
+    # )
+    # viz.plot_data_distribution(
+    #     repr_horiz_asph,
+    #     title="Raw Feature Space: Horizontal Dominance vs Asphalt Fraction Bottom",
+    #     xlabel=feature_names_all[7],
+    #     ylabel=feature_names_all[8],
+    # )
 
     # Optional: all feature histograms in a single window
     rep.plot_feature_histograms(
@@ -474,7 +469,22 @@ def problematique():
 
     rep.print_class_stats(repr_raw, feature_names_all)
 
-    # 6. Pretraitement: PCA / Décorrélation globale (via sklearn)
+    # Correlation matrix across all samples (to identify redundant features)
+    corr_matrix = np.corrcoef(features_norm, rowvar=False)
+    fig_corr, ax_corr = plt.subplots(figsize=(8, 7))
+    im = ax_corr.imshow(corr_matrix, vmin=-1, vmax=1, cmap="coolwarm")
+    fig_corr.colorbar(im, ax=ax_corr)
+    ax_corr.set_xticks(range(len(feature_names_all)))
+    ax_corr.set_xticklabels(feature_names_all, rotation=45, ha="right")
+    ax_corr.set_yticks(range(len(feature_names_all)))
+    ax_corr.set_yticklabels(feature_names_all)
+    for i in range(len(feature_names_all)):
+        for j in range(len(feature_names_all)):
+            ax_corr.text(
+                j, i, f"{corr_matrix[i, j]:.2f}", ha="center", va="center", fontsize=8
+            )
+    ax_corr.set_title("Feature correlation matrix (all samples)")
+    fig_corr.tight_layout()
 
     # PCA with all components so we can inspect full spectrum and eigenvectors
     pca = PCA(n_components=features_norm.shape[1])
@@ -565,6 +575,45 @@ def problematique():
 
     # 7–11. Train/validation split, then classifiers and neural network
 
+    # Feature importance on ALL features (same 70/30 split, no PCA)
+    rng_fi = np.random.default_rng(0)
+    train_idx_fi, val_idx_fi = [], []
+    for lbl in np.unique(labels):
+        class_idx = np.where(labels == lbl)[0]
+        rng_fi.shuffle(class_idx)
+        n_train = int(0.7 * len(class_idx))
+        train_idx_fi.extend(class_idx[:n_train])
+        val_idx_fi.extend(class_idx[n_train:])
+    train_idx_fi = np.array(train_idx_fi)
+    val_idx_fi = np.array(val_idx_fi)
+
+    scaler_all = StandardScaler().fit(raw_data[train_idx_fi])
+    features_all_train = scaler_all.transform(raw_data[train_idx_fi])
+    features_all_val = scaler_all.transform(raw_data[val_idx_fi])
+
+    run_feature_importance(
+        features_all_train,
+        features_all_val,
+        labels[train_idx_fi],
+        labels[val_idx_fi],
+        feature_names_all,
+    )
+
+    # Feature importance on SELECTED features only
+    scaler_sel = StandardScaler().fit(raw_data[train_idx_fi][:, SELECTED_FEATURES])
+    features_sel_train = scaler_sel.transform(
+        raw_data[train_idx_fi][:, SELECTED_FEATURES]
+    )
+    features_sel_val = scaler_sel.transform(raw_data[val_idx_fi][:, SELECTED_FEATURES])
+
+    run_feature_importance(
+        features_sel_train,
+        features_sel_val,
+        labels[train_idx_fi],
+        labels[val_idx_fi],
+        selected_names,
+    )
+
     (
         raw_train,
         raw_val,
@@ -577,14 +626,6 @@ def problematique():
         repr_train,
         repr_val,
     ) = train_val_split_pca4(raw_data[:, SELECTED_FEATURES], labels)
-
-    run_feature_importance(
-        features_train,
-        features_val,
-        labels_train,
-        labels_val,
-        [feature_names_all[i] for i in SELECTED_FEATURES],
-    )
 
     run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train)
     run_knn_classifier(repr_train, repr_val, decor_train, labels_train)
