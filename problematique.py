@@ -46,7 +46,7 @@ def train_val_split_pca4(raw_data, labels):
 
     # PCA ajustée sur l'ensemble d'entraînement uniquement
     # n_components: keep all PCs up to the number of selected features (max 4)
-    pca_clf = PCA(n_components=min(4, raw_data.shape[1]))
+    pca_clf = PCA(n_components=min(7, raw_data.shape[1]))
     decor_train = pca_clf.fit_transform(features_train)
     decor_val = pca_clf.transform(features_val)
 
@@ -498,8 +498,8 @@ def problematique():
     # To revert to all 9 features, comment out this line and the slicing below.
     SELECTED_FEATURES = [
         0,  # Structural Regularity  (+0.187, essential)
-        4,
         2,
+        4,
         6,  # Horizontal Dominance   (+0.105, essential)
     ]
 
@@ -525,51 +525,7 @@ def problematique():
         zlabel=feature_names_all[5],
     )
 
-    # Additional 2D views combining original and newly added features
-
-    # Structural Regularity vs Mean Saturation
-    repr_str_sat = dataset.Representation(data=features_norm[:, [0, 1]], labels=labels)
-    viz.plot_data_distribution(
-        repr_str_sat,
-        title="Raw Feature Space: Structural Regularity vs Mean Saturation",
-        xlabel=feature_names_all[0],
-        ylabel=feature_names_all[1],
-    )
-
-    # Mean Saturation vs Hue Diversity
-    repr_sat_huediv = dataset.Representation(
-        data=features_norm[:, [1, 6]], labels=labels
-    )
-    viz.plot_data_distribution(
-        repr_sat_huediv,
-        title="Raw Feature Space: Mean Saturation vs Hue Diversity",
-        xlabel=feature_names_all[1],
-        ylabel=feature_names_all[6],
-    )
-
-    # Dominant Hue vs Hue Diversity
-    repr_hue_div = dataset.Representation(data=features_norm[:, [3, 6]], labels=labels)
-    viz.plot_data_distribution(
-        repr_hue_div,
-        title="Raw Feature Space: Dominant Hue vs Hue Diversity",
-        xlabel=feature_names_all[3],
-        ylabel=feature_names_all[6],
-    )
-
-    # Orientation Entropy vs Roughness
-    repr_ent_rough = dataset.Representation(
-        data=features_norm[:, [4, 5]], labels=labels
-    )
-    viz.plot_data_distribution(
-        repr_ent_rough,
-        title="Raw Feature Space: Orientation Entropy vs Roughness",
-        xlabel=feature_names_all[4],
-        ylabel=feature_names_all[5],
-    )
-
-    # --- Pairwise 2D plots for the 5 features of interest ---
-    # (Structural Regularity=0, Sky Smoothness=2, Orientation Entropy=4,
-    #  Roughness=5, Horizontal Dominance=6)
+    # --- Pairwise 2D plots: Structural Regularity, Sky Smoothness, Orientation Entropy, Horizontal Dominance ---
 
     # Structural Regularity vs Sky Smoothness
     viz.plot_data_distribution(
@@ -585,14 +541,6 @@ def problematique():
         title="Raw Feature Space: Structural Regularity vs Orientation Entropy",
         xlabel=feature_names_all[0],
         ylabel=feature_names_all[4],
-    )
-
-    # Structural Regularity vs Roughness
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [0, 5]], labels=labels),
-        title="Raw Feature Space: Structural Regularity vs Roughness",
-        xlabel=feature_names_all[0],
-        ylabel=feature_names_all[5],
     )
 
     # Structural Regularity vs Horizontal Dominance
@@ -611,14 +559,6 @@ def problematique():
         ylabel=feature_names_all[4],
     )
 
-    # Sky Smoothness vs Roughness
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [2, 5]], labels=labels),
-        title="Raw Feature Space: Sky Smoothness vs Roughness",
-        xlabel=feature_names_all[2],
-        ylabel=feature_names_all[5],
-    )
-
     # Sky Smoothness vs Horizontal Dominance
     viz.plot_data_distribution(
         dataset.Representation(data=features_norm[:, [2, 6]], labels=labels),
@@ -633,82 +573,6 @@ def problematique():
         title="Raw Feature Space: Orientation Entropy vs Horizontal Dominance",
         xlabel=feature_names_all[4],
         ylabel=feature_names_all[6],
-    )
-
-    # Roughness vs Horizontal Dominance
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [5, 6]], labels=labels),
-        title="Raw Feature Space: Roughness vs Horizontal Dominance",
-        xlabel=feature_names_all[5],
-        ylabel=feature_names_all[6],
-    )
-
-    # --- Pairs involving Mean Saturation (1) ---
-
-    # Mean Saturation vs Sky Smoothness
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [1, 2]], labels=labels),
-        title="Raw Feature Space: Mean Saturation vs Sky Smoothness",
-        xlabel=feature_names_all[1],
-        ylabel=feature_names_all[2],
-    )
-
-    # Mean Saturation vs Orientation Entropy
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [1, 4]], labels=labels),
-        title="Raw Feature Space: Mean Saturation vs Orientation Entropy",
-        xlabel=feature_names_all[1],
-        ylabel=feature_names_all[4],
-    )
-
-    # Mean Saturation vs Roughness
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [1, 5]], labels=labels),
-        title="Raw Feature Space: Mean Saturation vs Roughness",
-        xlabel=feature_names_all[1],
-        ylabel=feature_names_all[5],
-    )
-
-    # Mean Saturation vs Dominant Hue
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [1, 3]], labels=labels),
-        title="Raw Feature Space: Mean Saturation vs Dominant Hue",
-        xlabel=feature_names_all[1],
-        ylabel=feature_names_all[3],
-    )
-
-    # --- Pairs involving Dominant Hue (3) ---
-
-    # Dominant Hue vs Structural Regularity
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [3, 0]], labels=labels),
-        title="Raw Feature Space: Dominant Hue vs Structural Regularity",
-        xlabel=feature_names_all[3],
-        ylabel=feature_names_all[0],
-    )
-
-    # Dominant Hue vs Sky Smoothness
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [3, 2]], labels=labels),
-        title="Raw Feature Space: Dominant Hue vs Sky Smoothness",
-        xlabel=feature_names_all[3],
-        ylabel=feature_names_all[2],
-    )
-
-    # Dominant Hue vs Orientation Entropy
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [3, 4]], labels=labels),
-        title="Raw Feature Space: Dominant Hue vs Orientation Entropy",
-        xlabel=feature_names_all[3],
-        ylabel=feature_names_all[4],
-    )
-
-    # Dominant Hue vs Roughness
-    viz.plot_data_distribution(
-        dataset.Representation(data=features_norm[:, [3, 5]], labels=labels),
-        title="Raw Feature Space: Dominant Hue vs Roughness",
-        xlabel=feature_names_all[3],
-        ylabel=feature_names_all[5],
     )
 
     # # Horizontal Dominance vs Asphalt Fraction Bottom
@@ -835,6 +699,21 @@ def problematique():
         xlabel="PC1",
         ylabel="PC2",
     )
+
+    # Loadings heatmap: contribution of each original feature to each PC
+    loadings = pca_sel.components_  # shape: (n_components, n_features)
+    fig_load, ax_load = plt.subplots(figsize=(8, 4))
+    im_load = ax_load.imshow(loadings, cmap="coolwarm", vmin=-1, vmax=1, aspect="auto")
+    fig_load.colorbar(im_load, ax=ax_load)
+    ax_load.set_xticks(range(len(SELECTED_FEATURES)))
+    ax_load.set_xticklabels(selected_names, rotation=45, ha="right")
+    ax_load.set_yticks(range(len(SELECTED_FEATURES)))
+    ax_load.set_yticklabels([f"PC{i+1}" for i in range(len(SELECTED_FEATURES))])
+    for i in range(len(SELECTED_FEATURES)):
+        for j in range(len(SELECTED_FEATURES)):
+            ax_load.text(j, i, f"{loadings[i, j]:.2f}", ha="center", va="center", fontsize=9)
+    ax_load.set_title(f"PCA loadings — contribution des features originales aux PC ({len(SELECTED_FEATURES)} features)")
+    fig_load.tight_layout()
 
     # 7–11. Train/validation split, then classifiers and neural network
 
