@@ -19,7 +19,7 @@ SHOW_FEATURE_HISTOGRAMS = True
 def train_val_split_pca4(raw_data, labels):
     """Train/validation split + normalization + PCA(5D) representation."""
 
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(0)  # no seed: random split each run
     train_indices = []
     val_indices = []
 
@@ -45,7 +45,8 @@ def train_val_split_pca4(raw_data, labels):
     features_val = scaler.transform(raw_val)
 
     # PCA ajustée sur l'ensemble d'entraînement uniquement
-    pca_clf = PCA(n_components=min(6, raw_data.shape[1]))
+    # n_components: keep all PCs up to the number of selected features (max 4)
+    pca_clf = PCA(n_components=min(3, raw_data.shape[1]))
     decor_train = pca_clf.fit_transform(features_train)
     decor_val = pca_clf.transform(features_val)
 
@@ -151,7 +152,7 @@ def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
         bayes_pred_val,
         repr_val.unique_labels,
         plot=True,
-        title="Matrice de confusion - Classificateur Bayésiens"
+        title="Matrice de confusion - Classificateur Bayésiens",
     )
 
     # Frontières de décision numériques en 2D sur (PC1, PC2) (apprises sur train)
@@ -164,14 +165,22 @@ def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
 def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
     """Stage 9: standard K-NN classifier + 2D regions."""
 
-    best_metric, best_metric_error = 'minkowski', 1.0
+    best_metric, best_metric_error = "minkowski", 1.0
     print("\n--- Comparaison des métriques de distance (k=3) ---")
-    for metric in ["minkowski", "manhattan", "chebyshev", "sqeuclidean", "cosine", "canberra", "braycurtis"]:
+    for metric in [
+        "minkowski",
+        "manhattan",
+        "chebyshev",
+        "sqeuclidean",
+        "cosine",
+        "canberra",
+        "braycurtis",
+    ]:
         knn_test = classifier.KNNClassifier(n_neighbors=3, metric=metric)
         knn_test.fit(repr_train)
         pred = knn_test.predict(repr_val.data)
         err, _ = analysis.compute_error_rate(repr_val.labels, pred)
-        print(f"  {metric:<12}: {err*100:.2f}%")
+        print(f"  {metric:<12}: {err * 100:.2f}%")
         if err < best_metric_error:
             best_metric, best_metric_error = metric, err
 
@@ -189,7 +198,9 @@ def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
     print(f"→ k optimal: {best_k} ({best_k_err * 100:.2f}%)")
 
     print(f"\n===== K-NN classifier (k={best_k}) on PCA(5) representation =====")
-    knn_classifier = classifier.KNNClassifier(n_neighbors=best_k, metric=f"{best_metric}")
+    knn_classifier = classifier.KNNClassifier(
+        n_neighbors=best_k, metric=f"{best_metric}"
+    )
     knn_classifier.fit(repr_train)
 
     knn_pred_train = knn_classifier.predict(repr_train.data)
@@ -216,7 +227,7 @@ def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
         knn_pred_val,
         repr_val.unique_labels,
         plot=True,
-        title="Matrice de confusion - Classificateur K-PPV"
+        title="Matrice de confusion - Classificateur K-PPV",
     )
 
     # Frontières de décision numériques 2D (PC1, PC2) pour 1-NN (apprises sur train)
@@ -274,7 +285,7 @@ def run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train):
         knn_kmeans_pred_val,
         repr_val.unique_labels,
         plot=True,
-        title="Matrice de confusion - Classificateur K-PPV + K-moyennes"
+        title="Matrice de confusion - Classificateur K-PPV + K-moyennes",
     )
 
     # Frontières de décision numériques 2D (PC1, PC2) pour K-NN avec k-moyennes
@@ -285,10 +296,11 @@ def run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train):
     knn_kmeans_classifier_2d.fit(repr_train_2d)
     viz.plot_numerical_decision_regions(knn_kmeans_classifier_2d, repr_train_2d)
 
+
 def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
     """Stage 10: K-NN + K-moyennes avec recherche en grille sur k ET n_representatives."""
 
-    k_values   = [1, 3, 5, 7, 9, 11, 15, 21]
+    k_values = [1, 3, 5, 7, 9, 11, 15, 21]
     rep_values = [1, 2, 3, 5, 7, 9, 12, 15, 20]
 
     # --- Recherche en grille ---
@@ -311,24 +323,33 @@ def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
                 continue
 
             knn_test = classifier.KNNClassifier(
-                n_neighbors=k, use_kmeans=True, n_representatives=n_rep, metric="minkowski"
+                n_neighbors=k,
+                use_kmeans=True,
+                n_representatives=n_rep,
+                metric="minkowski",
             )
             knn_test.fit(repr_train)
             pred = knn_test.predict(repr_val.data)
             err, _ = analysis.compute_error_rate(repr_val.labels, pred)
             results[(k, n_rep)] = err
-            print(f"  {err*100:>5.1f}%", end="")
+            print(f"  {err * 100:>5.1f}%", end="")
 
             if err < best_err:
                 best_k, best_rep, best_err = k, n_rep, err
         print()
 
-    print(f"\n→ Meilleure combinaison: k={best_k}, n_representatives={best_rep} ({best_err*100:.2f}%)")
+    print(
+        f"\n→ Meilleure combinaison: k={best_k}, n_representatives={best_rep} ({best_err * 100:.2f}%)"
+    )
 
     # --- Entraînement final avec les meilleurs hyperparamètres ---
-    print(f"\n===== K-NN k-moyennes (k={best_k}, {best_rep} reps) sur représentation PCA(5) =====")
+    print(
+        f"\n===== K-NN k-moyennes (k={best_k}, {best_rep} reps) sur représentation PCA(5) ====="
+    )
     knn_kmeans_classifier = classifier.KNNClassifier(
-        n_neighbors=best_k, use_kmeans=True, n_representatives=best_rep, 
+        n_neighbors=best_k,
+        use_kmeans=True,
+        n_representatives=best_rep,
     )
     knn_kmeans_classifier.fit(repr_train)
 
@@ -344,11 +365,11 @@ def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
 
     print(
         f"\nErreur entraînement : {len(knn_kmeans_train_err_idx)} / "
-        f"{len(repr_train.labels)} ({knn_kmeans_train_error*100:.2f}%)"
+        f"{len(repr_train.labels)} ({knn_kmeans_train_error * 100:.2f}%)"
     )
     print(
         f"Erreur validation   : {len(knn_kmeans_val_err_idx)} / "
-        f"{len(repr_val.labels)} ({knn_kmeans_val_error*100:.2f}%)"
+        f"{len(repr_val.labels)} ({knn_kmeans_val_error * 100:.2f}%)"
     )
 
     viz.show_confusion_matrix(
@@ -356,7 +377,7 @@ def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
         knn_kmeans_pred_val,
         repr_val.unique_labels,
         plot=True,
-        title=f"Matrice de confusion - K-PPV + K-moyennes (k={best_k}, reps={best_rep})"
+        title=f"Matrice de confusion - K-PPV + K-moyennes (k={best_k}, reps={best_rep})",
     )
 
     # Frontières de décision 2D
@@ -366,6 +387,7 @@ def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
     )
     knn_kmeans_2d.fit(repr_train_2d)
     viz.plot_numerical_decision_regions(knn_kmeans_2d, repr_train_2d)
+
 
 def run_neural_network_classifier(
     decor_train,
@@ -411,11 +433,11 @@ def run_neural_network_classifier(
         f"{len(repr_val.labels)} ({nn_error_rate * 100:.2f} %)"
     )
     viz.show_confusion_matrix(
-        repr_val.labels, 
-        nn_predictions, 
-        repr_all.unique_labels, 
-        plot=True, 
-        title="Matrice de confusion - Classificateur réseau de neurone"
+        repr_val.labels,
+        nn_predictions,
+        repr_all.unique_labels,
+        plot=True,
+        title="Matrice de confusion - Classificateur réseau de neurone",
     )
 
     # Frontières de décision numériques 2D (PC1, PC2) pour le réseau de neurones
@@ -475,11 +497,10 @@ def problematique():
     # Top-5 features from permutation importance analysis.
     # To revert to all 9 features, comment out this line and the slicing below.
     SELECTED_FEATURES = [
-        0,
+        0,  # Structural Regularity  (+0.187, essential)
         2,
-        5,
-        6,
-    ]  # Struct. Reg., Orient. Entropy, Roughness, Horiz. Dom.
+        6,  # Horizontal Dominance   (+0.105, essential)
+    ]
 
     # 3D scatter on the first three raw features
     repr_1 = dataset.Representation(data=features_norm[:, :3], labels=labels)
@@ -542,6 +563,150 @@ def problematique():
         repr_ent_rough,
         title="Raw Feature Space: Orientation Entropy vs Roughness",
         xlabel=feature_names_all[4],
+        ylabel=feature_names_all[5],
+    )
+
+    # --- Pairwise 2D plots for the 5 features of interest ---
+    # (Structural Regularity=0, Sky Smoothness=2, Orientation Entropy=4,
+    #  Roughness=5, Horizontal Dominance=6)
+
+    # Structural Regularity vs Sky Smoothness
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [0, 2]], labels=labels),
+        title="Raw Feature Space: Structural Regularity vs Sky Smoothness",
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[2],
+    )
+
+    # Structural Regularity vs Orientation Entropy
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [0, 4]], labels=labels),
+        title="Raw Feature Space: Structural Regularity vs Orientation Entropy",
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[4],
+    )
+
+    # Structural Regularity vs Roughness
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [0, 5]], labels=labels),
+        title="Raw Feature Space: Structural Regularity vs Roughness",
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[5],
+    )
+
+    # Structural Regularity vs Horizontal Dominance
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [0, 6]], labels=labels),
+        title="Raw Feature Space: Structural Regularity vs Horizontal Dominance",
+        xlabel=feature_names_all[0],
+        ylabel=feature_names_all[6],
+    )
+
+    # Sky Smoothness vs Orientation Entropy
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [2, 4]], labels=labels),
+        title="Raw Feature Space: Sky Smoothness vs Orientation Entropy",
+        xlabel=feature_names_all[2],
+        ylabel=feature_names_all[4],
+    )
+
+    # Sky Smoothness vs Roughness
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [2, 5]], labels=labels),
+        title="Raw Feature Space: Sky Smoothness vs Roughness",
+        xlabel=feature_names_all[2],
+        ylabel=feature_names_all[5],
+    )
+
+    # Sky Smoothness vs Horizontal Dominance
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [2, 6]], labels=labels),
+        title="Raw Feature Space: Sky Smoothness vs Horizontal Dominance",
+        xlabel=feature_names_all[2],
+        ylabel=feature_names_all[6],
+    )
+
+    # Orientation Entropy vs Horizontal Dominance
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [4, 6]], labels=labels),
+        title="Raw Feature Space: Orientation Entropy vs Horizontal Dominance",
+        xlabel=feature_names_all[4],
+        ylabel=feature_names_all[6],
+    )
+
+    # Roughness vs Horizontal Dominance
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [5, 6]], labels=labels),
+        title="Raw Feature Space: Roughness vs Horizontal Dominance",
+        xlabel=feature_names_all[5],
+        ylabel=feature_names_all[6],
+    )
+
+    # --- Pairs involving Mean Saturation (1) ---
+
+    # Mean Saturation vs Sky Smoothness
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [1, 2]], labels=labels),
+        title="Raw Feature Space: Mean Saturation vs Sky Smoothness",
+        xlabel=feature_names_all[1],
+        ylabel=feature_names_all[2],
+    )
+
+    # Mean Saturation vs Orientation Entropy
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [1, 4]], labels=labels),
+        title="Raw Feature Space: Mean Saturation vs Orientation Entropy",
+        xlabel=feature_names_all[1],
+        ylabel=feature_names_all[4],
+    )
+
+    # Mean Saturation vs Roughness
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [1, 5]], labels=labels),
+        title="Raw Feature Space: Mean Saturation vs Roughness",
+        xlabel=feature_names_all[1],
+        ylabel=feature_names_all[5],
+    )
+
+    # Mean Saturation vs Dominant Hue
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [1, 3]], labels=labels),
+        title="Raw Feature Space: Mean Saturation vs Dominant Hue",
+        xlabel=feature_names_all[1],
+        ylabel=feature_names_all[3],
+    )
+
+    # --- Pairs involving Dominant Hue (3) ---
+
+    # Dominant Hue vs Structural Regularity
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [3, 0]], labels=labels),
+        title="Raw Feature Space: Dominant Hue vs Structural Regularity",
+        xlabel=feature_names_all[3],
+        ylabel=feature_names_all[0],
+    )
+
+    # Dominant Hue vs Sky Smoothness
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [3, 2]], labels=labels),
+        title="Raw Feature Space: Dominant Hue vs Sky Smoothness",
+        xlabel=feature_names_all[3],
+        ylabel=feature_names_all[2],
+    )
+
+    # Dominant Hue vs Orientation Entropy
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [3, 4]], labels=labels),
+        title="Raw Feature Space: Dominant Hue vs Orientation Entropy",
+        xlabel=feature_names_all[3],
+        ylabel=feature_names_all[4],
+    )
+
+    # Dominant Hue vs Roughness
+    viz.plot_data_distribution(
+        dataset.Representation(data=features_norm[:, [3, 5]], labels=labels),
+        title="Raw Feature Space: Dominant Hue vs Roughness",
+        xlabel=feature_names_all[3],
         ylabel=feature_names_all[5],
     )
 
@@ -673,7 +838,7 @@ def problematique():
     # 7–11. Train/validation split, then classifiers and neural network
 
     # Feature importance on ALL features (same 70/30 split, no PCA)
-    rng_fi = np.random.default_rng(0)
+    rng_fi = np.random.default_rng(0)  # no seed: random split each run
     train_idx_fi, val_idx_fi = [], []
     for lbl in np.unique(labels):
         class_idx = np.where(labels == lbl)[0]
