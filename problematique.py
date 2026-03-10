@@ -120,9 +120,7 @@ def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
     aprioris = counts / counts.sum()
     print(f"A priori calculés : {dict(zip(unique_labels, aprioris.round(3)))}")
 
-    bayes_classifier = classifier.BayesClassifier(
-        aprioris=aprioris, density_function=analysis.GaussianPDF
-    )
+    bayes_classifier = classifier.BayesClassifier(aprioris=aprioris)
     bayes_classifier.fit(repr_train)
 
     # Erreur sur l'ensemble d'entraînement
@@ -154,7 +152,8 @@ def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
         repr_val.labels,
         bayes_pred_val,
         repr_val.unique_labels,
-        plot=False,
+        plot=True,
+        title="Matrice de confusion - Classificateur Bayésiens"
     )
 
     # Frontières de décision numériques en 2D sur (PC1, PC2) (apprises sur train)
@@ -167,10 +166,21 @@ def run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train):
 def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
     """Stage 9: standard K-NN classifier + 2D regions."""
 
+    best_metric, best_metric_error = 'minkowski', 1.0
+    print("\n--- Comparaison des métriques de distance (k=3) ---")
+    for metric in ["minkowski", "manhattan", "chebyshev", "sqeuclidean", "cosine", "canberra", "braycurtis"]:
+        knn_test = classifier.KNNClassifier(n_neighbors=3, metric=metric)
+        knn_test.fit(repr_train)
+        pred = knn_test.predict(repr_val.data)
+        err, _ = analysis.compute_error_rate(repr_val.labels, pred)
+        print(f"  {metric:<12}: {err*100:.2f}%")
+        if err < best_metric_error:
+            best_metric, best_metric_error = metric, err
+
     print("\n--- Recherche du k optimal pour K-NN ---")
     best_k, best_k_err = 1, 1.0
-    for k in [1, 3, 5, 7, 9]:
-        knn_test = classifier.KNNClassifier(n_neighbors=k)
+    for k in [1, 3, 5, 7, 9, 11, 15, 21]:
+        knn_test = classifier.KNNClassifier(n_neighbors=k, metric=f"{best_metric}")
         knn_test.fit(repr_train)
         pred = knn_test.predict(repr_val.data)
         err, _ = analysis.compute_error_rate(repr_val.labels, pred)
@@ -181,7 +191,7 @@ def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
     print(f"→ k optimal: {best_k} ({best_k_err * 100:.2f}%)")
 
     print(f"\n===== K-NN classifier (k={best_k}) on PCA(5) representation =====")
-    knn_classifier = classifier.KNNClassifier(n_neighbors=best_k)
+    knn_classifier = classifier.KNNClassifier(n_neighbors=best_k, metric=f"{best_metric}")
     knn_classifier.fit(repr_train)
 
     knn_pred_train = knn_classifier.predict(repr_train.data)
@@ -207,7 +217,8 @@ def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
         repr_val.labels,
         knn_pred_val,
         repr_val.unique_labels,
-        plot=False,
+        plot=True,
+        title="Matrice de confusion - Classificateur K-PPV"
     )
 
     # Frontières de décision numériques 2D (PC1, PC2) pour 1-NN (apprises sur train)
@@ -222,9 +233,9 @@ def run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train):
 
     print("\n--- Recherche du n_representatives optimal pour K-NN k-moyennes ---")
     best_rep, best_rep_err = 1, 1.0
-    for n_rep in [1, 2, 3, 5, 7, 9]:
+    for n_rep in [1, 2, 3, 5, 7, 9, 12, 15, 20]:
         knn_test = classifier.KNNClassifier(
-            n_neighbors=1, use_kmeans=True, n_representatives=n_rep
+            n_neighbors=1, use_kmeans=True, n_representatives=n_rep, metric="manhattan"
         )
         knn_test.fit(repr_train)
         pred = knn_test.predict(repr_val.data)
@@ -264,7 +275,8 @@ def run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train):
         repr_val.labels,
         knn_kmeans_pred_val,
         repr_val.unique_labels,
-        plot=False,
+        plot=True,
+        title="Matrice de confusion - Classificateur K-PPV + K-moyennes"
     )
 
     # Frontières de décision numériques 2D (PC1, PC2) pour K-NN avec k-moyennes
@@ -275,6 +287,87 @@ def run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train):
     knn_kmeans_classifier_2d.fit(repr_train_2d)
     viz.plot_numerical_decision_regions(knn_kmeans_classifier_2d, repr_train_2d)
 
+def run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train):
+    """Stage 10: K-NN + K-moyennes avec recherche en grille sur k ET n_representatives."""
+
+    k_values   = [1, 3, 5, 7, 9, 11, 15, 21]
+    rep_values = [1, 2, 3, 5, 7, 9, 12, 15, 20]
+
+    # --- Recherche en grille ---
+    print("\n--- Recherche en grille: k × n_representatives ---")
+    print(f"{'n_rep →':>10}", end="")
+    for n_rep in rep_values:
+        print(f"  rep={n_rep:>2}", end="")
+    print()
+
+    best_k, best_rep, best_err = 1, 1, 1.0
+    results = {}
+
+    for k in k_values:
+        print(f"k={k:<8}", end="")
+        for n_rep in rep_values:
+            # n_representatives doit être >= n_neighbors
+            if n_rep < k:
+                print(f"  {'N/A':>6}", end="")
+                results[(k, n_rep)] = None
+                continue
+
+            knn_test = classifier.KNNClassifier(
+                n_neighbors=k, use_kmeans=True, n_representatives=n_rep, metric="minkowski"
+            )
+            knn_test.fit(repr_train)
+            pred = knn_test.predict(repr_val.data)
+            err, _ = analysis.compute_error_rate(repr_val.labels, pred)
+            results[(k, n_rep)] = err
+            print(f"  {err*100:>5.1f}%", end="")
+
+            if err < best_err:
+                best_k, best_rep, best_err = k, n_rep, err
+        print()
+
+    print(f"\n→ Meilleure combinaison: k={best_k}, n_representatives={best_rep} ({best_err*100:.2f}%)")
+
+    # --- Entraînement final avec les meilleurs hyperparamètres ---
+    print(f"\n===== K-NN k-moyennes (k={best_k}, {best_rep} reps) sur représentation PCA(5) =====")
+    knn_kmeans_classifier = classifier.KNNClassifier(
+        n_neighbors=best_k, use_kmeans=True, n_representatives=best_rep, 
+    )
+    knn_kmeans_classifier.fit(repr_train)
+
+    knn_kmeans_pred_train = knn_kmeans_classifier.predict(repr_train.data)
+    knn_kmeans_train_error, knn_kmeans_train_err_idx = analysis.compute_error_rate(
+        repr_train.labels, knn_kmeans_pred_train
+    )
+
+    knn_kmeans_pred_val = knn_kmeans_classifier.predict(repr_val.data)
+    knn_kmeans_val_error, knn_kmeans_val_err_idx = analysis.compute_error_rate(
+        repr_val.labels, knn_kmeans_pred_val
+    )
+
+    print(
+        f"\nErreur entraînement : {len(knn_kmeans_train_err_idx)} / "
+        f"{len(repr_train.labels)} ({knn_kmeans_train_error*100:.2f}%)"
+    )
+    print(
+        f"Erreur validation   : {len(knn_kmeans_val_err_idx)} / "
+        f"{len(repr_val.labels)} ({knn_kmeans_val_error*100:.2f}%)"
+    )
+
+    viz.show_confusion_matrix(
+        repr_val.labels,
+        knn_kmeans_pred_val,
+        repr_val.unique_labels,
+        plot=True,
+        title=f"Matrice de confusion - K-PPV + K-moyennes (k={best_k}, reps={best_rep})"
+    )
+
+    # Frontières de décision 2D
+    repr_train_2d = dataset.Representation(data=decor_train[:, :2], labels=labels_train)
+    knn_kmeans_2d = classifier.KNNClassifier(
+        n_neighbors=best_k, use_kmeans=True, n_representatives=best_rep
+    )
+    knn_kmeans_2d.fit(repr_train_2d)
+    viz.plot_numerical_decision_regions(knn_kmeans_2d, repr_train_2d)
 
 def run_neural_network_classifier(
     decor_train,
@@ -320,7 +413,11 @@ def run_neural_network_classifier(
         f"{len(repr_val.labels)} ({nn_error_rate * 100:.2f} %)"
     )
     viz.show_confusion_matrix(
-        repr_val.labels, nn_predictions, repr_all.unique_labels, plot=False
+        repr_val.labels, 
+        nn_predictions, 
+        repr_all.unique_labels, 
+        plot=True, 
+        title="Matrice de confusion - Classificateur réseau de neurone"
     )
 
     # Frontières de décision numériques 2D (PC1, PC2) pour le réseau de neurones
@@ -589,6 +686,7 @@ def problematique():
     run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train)
     run_knn_classifier(repr_train, repr_val, decor_train, labels_train)
     run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train)
+    run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train)
     run_neural_network_classifier(
         decor_train,
         decor_val,
