@@ -46,7 +46,7 @@ def train_val_split_pca4(raw_data, labels):
 
     # PCA ajustée sur l'ensemble d'entraînement uniquement
     # n_components: keep all PCs up to the number of selected features (max 4)
-    pca_clf = PCA(n_components=min(3, raw_data.shape[1]))
+    pca_clf = PCA(n_components=min(4, raw_data.shape[1]))
     decor_train = pca_clf.fit_transform(features_train)
     decor_val = pca_clf.transform(features_val)
 
@@ -498,6 +498,7 @@ def problematique():
     # To revert to all 9 features, comment out this line and the slicing below.
     SELECTED_FEATURES = [
         0,  # Structural Regularity  (+0.187, essential)
+        4,
         2,
         6,  # Horizontal Dominance   (+0.105, essential)
     ]
@@ -811,7 +812,7 @@ def problematique():
         pca_sel.explained_variance_ratio_,
         marker="o",
     )
-    plt.title("Explained variance ratio — selected 5 features")
+    plt.title(f"Explained variance ratio — {len(SELECTED_FEATURES)} selected features")
     plt.xlabel("Principal component index")
     plt.ylabel("Variance ratio")
     plt.grid(True, alpha=0.3)
@@ -819,7 +820,7 @@ def problematique():
     repr_sel_3d = dataset.Representation(data=decorrelated_sel[:, :3], labels=labels)
     viz.plot_data_distribution(
         repr_sel_3d,
-        title="PCA space (5 features): PC1 vs PC2 vs PC3",
+        title=f"PCA space ({len(SELECTED_FEATURES)} selected features): PC1 vs PC2 vs PC3",
         xlabel="PC1",
         ylabel="PC2",
         zlabel="PC3",
@@ -830,7 +831,7 @@ def problematique():
     )
     viz.plot_data_distribution(
         repr_sel_2d,
-        title="PCA space (5 features): PC1 vs PC2",
+        title=f"PCA space ({len(SELECTED_FEATURES)} selected features): PC1 vs PC2",
         xlabel="PC1",
         ylabel="PC2",
     )
