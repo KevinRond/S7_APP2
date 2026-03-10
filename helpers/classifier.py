@@ -9,10 +9,7 @@ import sklearn.model_selection
 import sklearn.neighbors
 import sklearn.preprocessing
 
-from . import (
-    analysis,
-    dataset
-)
+from . import analysis, dataset
 
 
 class Classifier(abc.ABC):
@@ -26,6 +23,7 @@ class Classifier(abc.ABC):
     fit(representation)
         Entraîne le classificateur en utilisant la représentation fournie.
     """
+
     @abc.abstractmethod
     def predict(self, data):
         """
@@ -71,7 +69,14 @@ class BayesClassifier(Classifier):
         Prédit les étiquettes de classe pour les données fournies.
     """
 
-    def __init__(self, aprioris: numpy.ndarray = None, cost_matrix: numpy.ndarray = None, density_function: Type[analysis.ProbabilityDensityFunction] = analysis.GaussianPDF):
+    def __init__(
+        self,
+        aprioris: numpy.ndarray = None,
+        cost_matrix: numpy.ndarray = None,
+        density_function: Type[
+            analysis.ProbabilityDensityFunction
+        ] = analysis.GaussianPDF,
+    ):
         """
         Args:
             aprioris: Probabilités a priori pour chaque classe.
@@ -94,10 +99,15 @@ class BayesClassifier(Classifier):
             representation: Représentation des données d'entraînement.
         """
         if self.aprioris is None:
-            self.aprioris = numpy.array([1 / len(representation.unique_labels)] * len(representation.unique_labels))
+            self.aprioris = numpy.array(
+                [1 / len(representation.unique_labels)]
+                * len(representation.unique_labels)
+            )
 
         if self.cost_matrix is None:
-            self.cost_matrix = numpy.ones((len(representation.unique_labels), len(representation.unique_labels))) - numpy.eye(len(representation.unique_labels))
+            self.cost_matrix = numpy.ones(
+                (len(representation.unique_labels), len(representation.unique_labels))
+            ) - numpy.eye(len(representation.unique_labels))
 
         for label in representation.unique_labels:
             class_data = representation.get_class(label)
@@ -118,12 +128,16 @@ class BayesClassifier(Classifier):
         for density in self.densities:
             probability = density.compute_probability(data)  # P(x|C_i) pour tout x
             class_probabilities.append(probability)
-        class_probabilities = numpy.array(class_probabilities)  # shape: (n_classes, n_samples)
+        class_probabilities = numpy.array(
+            class_probabilities
+        )  # shape: (n_classes, n_samples)
 
         # class_probabilities.T : shape (n_samples, n_classes)
         # aprioris shape: (n_classes,)
         # posteriori[k, j] = P(x_k | C_j) * P(C_j)
-        posteriori = class_probabilities.T * self.aprioris  # broadcasting sur les lignes
+        posteriori = (
+            class_probabilities.T * self.aprioris
+        )  # broadcasting sur les lignes
 
         # risks[k, i] = Σ_j cost_matrix[i, j] * posteriori[k, j]
         risks = posteriori @ self.cost_matrix.T  # shape: (n_samples, n_classes)
@@ -156,7 +170,14 @@ class KNNClassifier(Classifier):
     predict(data)
         Prédit les étiquettes de classe pour les données fournies.
     """
-    def __init__(self, n_neighbors: int, use_kmeans: bool = False, n_representatives: int = 1, metric: str = "minkowski"):
+
+    def __init__(
+        self,
+        n_neighbors: int,
+        use_kmeans: bool = False,
+        n_representatives: int = 1,
+        metric: str = "minkowski",
+    ):
         """
         Args:
             n_neighbors: Nombre de voisins à considérer lors de la classification.
@@ -173,7 +194,9 @@ class KNNClassifier(Classifier):
             raise ValueError("n_representatives must be at least 1 when using KMeans")
 
         if use_kmeans and n_representatives < n_neighbors:
-            raise ValueError("n_representatives must be at least equal to n_neighbors when using KMeans")
+            raise ValueError(
+                "n_representatives must be at least equal to n_neighbors when using KMeans"
+            )
 
         self.n_neighbors = n_neighbors
         self.metric = metric
@@ -190,7 +213,9 @@ class KNNClassifier(Classifier):
         # L3.E2.1 Complétez l'utilisation de KNeighborsClassifier
         # à partire des arguments fournis au constructeur de KNNClassifier
         # ---------------------------------------------------------------------
-        self.knn = sklearn.neighbors.KNeighborsClassifier(self.n_neighbors, metric=self.metric)
+        self.knn = sklearn.neighbors.KNeighborsClassifier(
+            self.n_neighbors, metric=self.metric
+        )
         # ---------------------------------------------------------------------
 
     def fit(self, representation: dataset.Representation):
@@ -226,7 +251,11 @@ class KNNClassifier(Classifier):
             representatives = representation.data
             representatives_labels = representation.labels
 
-        self.knn.fit(representatives, representatives_labels)
+        # Encode string labels to integers for sklearn compatibility
+        # (newer sklearn versions require integer-convertible labels in some code paths)
+        self._label_classes = numpy.unique(representatives_labels)
+        int_labels = numpy.searchsorted(self._label_classes, representatives_labels)
+        self.knn.fit(representatives, int_labels)
 
     def predict(self, data):
         """
@@ -235,7 +264,8 @@ class KNNClassifier(Classifier):
         Args:
             data: Données à classer.
         """
-        return self.knn.predict(data)
+        int_pred = self.knn.predict(data)
+        return self._label_classes[int_pred]
 
 
 class NeuralNetworkClassifier(Classifier):
@@ -270,10 +300,20 @@ class NeuralNetworkClassifier(Classifier):
     load(path)
         Charge un modèle entraîné depuis l'emplacement spécifié. Ce dernier remplace et écrase le modèle actuel.
     """
+
     model: Optional[keras.models.Model]
     history: Optional[keras.callbacks.History]
 
-    def __init__(self, input_dim: int, output_dim: int, n_hidden:int=2, n_neurons:int=2, lr:float=0.01, n_epochs:int=1000, batch_size:int=16):
+    def __init__(
+        self,
+        input_dim: int,
+        output_dim: int,
+        n_hidden: int = 2,
+        n_neurons: int = 2,
+        lr: float = 0.01,
+        n_epochs: int = 1000,
+        batch_size: int = 16,
+    ):
         """
         Args:
             input_dim: Dimension des données d'entrée.
@@ -315,7 +355,7 @@ class NeuralNetworkClassifier(Classifier):
         self.model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=self.lr),
             loss=keras.losses.CategoricalCrossentropy(),
-            metrics=["accuracy"]
+            metrics=["accuracy"],
         )
         # -------------------------------------------------------------------------
 
@@ -352,21 +392,25 @@ class NeuralNetworkClassifier(Classifier):
         # pour l'entraînement d'un classificateur.
         # -------------------------------------------------------------------------
         labels_column = representation.labels.reshape(-1, 1)
-    
-        encoder = sklearn.preprocessing.OneHotEncoder(sparse_output=False) # sparse_output=False pour avoir un array numpy
+
+        encoder = sklearn.preprocessing.OneHotEncoder(
+            sparse_output=False
+        )  # sparse_output=False pour avoir un array numpy
         one_hot_labels = encoder.fit_transform(labels_column)
-        
+
         labels_integers = numpy.argmax(one_hot_labels, axis=-1)
         # -------------------------------------------------------------------------
 
         # L2.E4.2 Partitionnez les données en sous-ensemble d'entraînement et de validation.
         # -------------------------------------------------------------------------
-        train_data, val_data, train_labels, val_labels = sklearn.model_selection.train_test_split(
-            representation.data,
-            one_hot_labels,
-            test_size=0.2,
-            random_state=42,
-            stratify=labels_integers
+        train_data, val_data, train_labels, val_labels = (
+            sklearn.model_selection.train_test_split(
+                representation.data,
+                one_hot_labels,
+                test_size=0.2,
+                random_state=42,
+                stratify=labels_integers,
+            )
         )
         # -------------------------------------------------------------------------
 
@@ -383,25 +427,28 @@ class NeuralNetworkClassifier(Classifier):
             representation: Représentation des données d'entraînement.
         """
         representation.data = self.preprocess_data(representation.data)
-        train_data, val_data, train_labels, val_labels = self.prepare_datasets(representation)
+        train_data, val_data, train_labels, val_labels = self.prepare_datasets(
+            representation
+        )
 
         # L2.E4.4 Utilisez un callback pour visualiser la performance de l'entraînement tout les 25 epochs.
         # et un autre pour arrêter l'entraînement lorsque la généralisation se dégrade.
         # -------------------------------------------------------------------------
         early_stop = keras.callbacks.EarlyStopping(
-            monitor='val_loss', 
+            monitor="val_loss",
             patience=25,
-            restore_best_weights=True # On garde la version qui était la meilleure
+            restore_best_weights=True,  # On garde la version qui était la meilleure
         )
-        callbacks=[early_stop, PrintEveryNEpochs(n_epochs=25)]
+        callbacks = [early_stop, PrintEveryNEpochs(n_epochs=25)]
 
         self.history = self.model.fit(
-            train_data, train_labels,
+            train_data,
+            train_labels,
             validation_data=(val_data, val_labels),
             batch_size=self.batch_size,
             epochs=self.n_epochs,
             callbacks=callbacks,
-            verbose=False
+            verbose=False,
         )
         # -------------------------------------------------------------------------
 
@@ -419,7 +466,9 @@ class NeuralNetworkClassifier(Classifier):
             ValueError: Si le modèle n'a pas encore été entraîné.
         """
         if self.model is None:
-            raise ValueError("The model has not been trained yet. Call fit() before predict() or load an existing model using load().")
+            raise ValueError(
+                "The model has not been trained yet. Call fit() before predict() or load an existing model using load()."
+            )
 
         data = self.preprocess_data(data)
 
@@ -438,7 +487,9 @@ class NeuralNetworkClassifier(Classifier):
             ValueError: Si le modèle n'a pas encore été entraîné.
         """
         if self.model is None:
-            raise ValueError("The model has not been trained yet. Call fit() before save() or load an existing model using load().")
+            raise ValueError(
+                "The model has not been trained yet. Call fit() before save() or load an existing model using load()."
+            )
 
         self.model.save(path)
 
@@ -463,6 +514,7 @@ class PrintEveryNEpochs(keras.callbacks.Callback):
         on_epoch_end(epoch, logs): méthode appelée à la fin de chaque époque pour
             afficher les métriques si l'époque est un multiple de n_epochs.
     """
+
     def __init__(self, n_epochs: int):
         """
         Args:
@@ -492,7 +544,9 @@ class PrintEveryNEpochs(keras.callbacks.Callback):
                 accuracy = logs["accuracy"]
                 val_accuracy = logs["val_accuracy"]
 
-            print(f"Epoch {epoch + 1:>3}: loss = {loss:.4f}, val_loss = {val_loss:.4f}, accuracy = {accuracy:.4f}, val_accuracy = {val_accuracy:.4f}")
+            print(
+                f"Epoch {epoch + 1:>3}: loss = {loss:.4f}, val_loss = {val_loss:.4f}, accuracy = {accuracy:.4f}, val_accuracy = {val_accuracy:.4f}"
+            )
 
 
 def set_deterministic(seed: int = 0):
