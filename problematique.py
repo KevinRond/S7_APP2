@@ -197,7 +197,7 @@ def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
 
     print(f"→ k optimal: {best_k} ({best_k_err * 100:.2f}%)")
 
-    print(f"\n===== K-NN classifier (k={best_k}) on PCA(5) representation =====")
+    print(f"\n===== K-NN classifier (k={best_k}) with the metric {best_metric} =====")
     knn_classifier = classifier.KNNClassifier(
         n_neighbors=best_k, metric=f"{best_metric}"
     )
@@ -227,7 +227,7 @@ def run_knn_classifier(repr_train, repr_val, decor_train, labels_train):
         knn_pred_val,
         repr_val.unique_labels,
         plot=True,
-        title="Matrice de confusion - Classificateur K-PPV",
+        title=f"Matrice de confusion - Classificateur K-PPV (k={best_k}, metric={best_metric})",
     )
 
     # Frontières de décision numériques 2D (PC1, PC2) pour 1-NN (apprises sur train)
@@ -892,7 +892,7 @@ def problematique():
 
     run_bayesian_classifier(repr_train, repr_val, decor_train, labels_train)
     run_knn_classifier(repr_train, repr_val, decor_train, labels_train)
-    run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train)
+    # run_knn_kmeans_classifier(repr_train, repr_val, decor_train, labels_train)
     run_knn_kmeans_gridsearch(repr_train, repr_val, decor_train, labels_train)
     run_neural_network_classifier(
         decor_train,
