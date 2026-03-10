@@ -176,7 +176,7 @@ class KNNClassifier(Classifier):
             raise ValueError("n_representatives must be at least equal to n_neighbors when using KMeans")
 
         self.n_neighbors = n_neighbors
-
+        self.metric = metric
         self.use_kmeans = use_kmeans
         self.n_representatives = n_representatives
 
@@ -190,7 +190,7 @@ class KNNClassifier(Classifier):
         # L3.E2.1 Complétez l'utilisation de KNeighborsClassifier
         # à partire des arguments fournis au constructeur de KNNClassifier
         # ---------------------------------------------------------------------
-        self.knn = sklearn.neighbors.KNeighborsClassifier(self.n_neighbors)
+        self.knn = sklearn.neighbors.KNeighborsClassifier(self.n_neighbors, metric=self.metric)
         # ---------------------------------------------------------------------
 
     def fit(self, representation: dataset.Representation):

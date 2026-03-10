@@ -427,6 +427,7 @@ def show_confusion_matrix(
     predictions: numpy.ndarray,
     class_labels: List[str],
     plot: bool = True,
+    title = "Matrice de confusion",
 ):
     """
     Affiche la matrice de confusion entre les étiquettes cibles et les prédictions.
@@ -453,7 +454,7 @@ def show_confusion_matrix(
 
     fig, ax = _get_axes(
         figsize=DEFAULT_FIGSIZE,
-        title="Matrice de confusion",
+        title=title,
         xlabel="Prédictions",
         ylabel="Cibles",
     )
