@@ -207,7 +207,7 @@ class KNNClassifier(Classifier):
             # L3.E2.3 Compléter l'utilisation de KMeans
             # à partir des arguments fournis au constructeur de KNNClassifier
             # -----------------------------------------------------------------
-            self.kmeans = sklearn.cluster.KMeans(self.n_representatives, n_init="auto")
+            self.kmeans = sklearn.cluster.KMeans(self.n_representatives, n_init="auto", random_state=42)
             # -----------------------------------------------------------------
 
         # L3.E2.1 Complétez l'utilisation de KNeighborsClassifier
